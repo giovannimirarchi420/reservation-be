@@ -1,0 +1,52 @@
+# Development Profile Configuration
+spring:
+  # H2 Configuration
+  datasource:
+    url: jdbc:h2:mem:resourcedb
+    driverClassName: org.h2.Driver
+    username: sa
+    password: password
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # Disable OAuth2 Resource Server for development
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          enabled: false
+
+# Disable Keycloak for development
+keycloak:
+  enabled: false
+
+# Application specific settings
+app:
+  cors:
+    allowed-origins: http://localhost:3000
+  # Dev settings
+  security:
+    dev-mode: true
+    admin-username: admin
+    admin-password: admin
+
+# Logging Configuration
+logging:
+  level:
+    org:
+      springframework: INFO
+      hibernate:
+        SQL: DEBUG
+      springframework.security: DEBUG
+    it:
+      polito: DEBUG

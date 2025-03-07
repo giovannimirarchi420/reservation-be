@@ -1,0 +1,46 @@
+package it.polito.cloudresources.be.dto;
+
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+/**
+ * DTO for Event data transfer
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class EventDTO {
+    private Long id;
+
+    @NotBlank(message = "Title is required")
+    @Size(max = 100, message = "Title cannot exceed 100 characters")
+    private String title;
+
+    @Size(max = 500, message = "Description cannot exceed 500 characters")
+    private String description;
+
+    @NotNull(message = "Start date is required")
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime start;
+
+    @NotNull(message = "End date is required")
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime end;
+
+    @NotNull(message = "Resource is required")
+    private Long resourceId;
+
+    private String userId;
+
+    // Additional fields for the frontend
+    private String userName;
+    private String resourceName;
+}
