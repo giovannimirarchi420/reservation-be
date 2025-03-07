@@ -6,13 +6,13 @@ server:
 
 # Database Configuration
 spring:
-   datasource:
-     url: jdbc:postgresql://localhost:5432/resourcedb
-     driverClassName: org.postgresql.Driver
-     username: postgres
-     password: postgres
-   jpa:
-     database-platform: org.hibernate.dialect.PostgreSQLDialect
+  datasource:
+    url: jdbc:postgresql://localhost:5432/resourcedb
+    driverClassName: org.postgresql.Driver
+    username: postgres
+    password: postgres
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
 
   # Jackson Date Format
   jackson:
