@@ -35,9 +35,11 @@ public class Event {
     private String description;
 
     @NotNull
+    @Column(name = "start_time")
     private LocalDateTime start;
 
     @NotNull
+    @Column(name = "end_time")
     private LocalDateTime end;
 
     @ManyToOne
