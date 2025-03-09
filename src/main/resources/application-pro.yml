@@ -55,6 +55,7 @@ app:
 logging:
   level:
     org:
+      keycloak: DEBUG
       springframework: INFO
       hibernate:
         SQL: DEBUG

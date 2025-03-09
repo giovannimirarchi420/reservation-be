@@ -16,7 +16,7 @@
     
     <properties>
         <java.version>17</java.version>
-        <keycloak.version>23.0.4</keycloak.version>
+        <keycloak.version>24.0.1</keycloak.version>
         <springdoc.version>2.3.0</springdoc.version>
     </properties>
     

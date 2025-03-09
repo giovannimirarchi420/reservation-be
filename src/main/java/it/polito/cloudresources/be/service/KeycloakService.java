@@ -1,5 +1,6 @@
 package it.polito.cloudresources.be.service;
 
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
@@ -116,59 +117,112 @@ public class KeycloakService {
     /**
      * Create a new user in Keycloak
      */
+    /**
+     * Create a new user in Keycloak
+     */
+    @Transactional
     public String createUser(String username, String email, String firstName, String lastName, String password, List<String> roles) {
         try {
-            // Create user representation
+            log.debug("Tentativo di creazione utente: username={}, email={}, firstName={}, lastName={}", 
+                    username, email, firstName, lastName);
+            
+            // Crea un oggetto UserRepresentation completamente nuovo
             UserRepresentation user = new UserRepresentation();
+            
+            // Imposta SOLO i campi base, evitando qualsiasi campo problematico
+            Map<String, List<String>> attributes = new HashMap<>();
+            
             user.setUsername(username);
             user.setEmail(email);
             user.setFirstName(firstName);
             user.setLastName(lastName);
             user.setEnabled(true);
             user.setEmailVerified(true);
-
-            // Set password
-            CredentialRepresentation credential = new CredentialRepresentation();
-            credential.setType(CredentialRepresentation.PASSWORD);
-            credential.setValue(password);
-            credential.setTemporary(false);
-
-            user.setCredentials(Collections.singletonList(credential));
-
+            user.setAttributes(attributes);            
+            // Verifica che tutti i campi necessari siano presenti
+            if (username == null || username.trim().isEmpty()) {
+                log.error("Creazione utente fallita: username mancante o vuoto");
+                return null;
+            }
+            if (email == null || email.trim().isEmpty()) {
+                log.error("Creazione utente fallita: email mancante o vuota");
+                return null;
+            }
+            
             // Create user
             UsersResource usersResource = getRealmResource().users();
+            
+            // Log dettagliato della rappresentazione dell'utente
+            log.debug("Rappresentazione utente: {}", user);
+            
             Response response = usersResource.create(user);
-
+            log.debug("Risposta creazione utente - Status: {}, Messaggio: {}", 
+                    response.getStatus(), response.getStatusInfo().getReasonPhrase());
+                    
             if (response.getStatus() != 201) {
-                log.error("Failed to create user in Keycloak: {}", response.getStatusInfo().getReasonPhrase());
+                if (response.hasEntity()) {
+                    // Prova a leggere il corpo della risposta per capire meglio l'errore
+                    String responseBody = response.readEntity(String.class);
+                    log.error("Dettaglio errore da Keycloak: {}", responseBody);
+                }
+                log.error("Creazione utente fallita in Keycloak: {} ({})", 
+                        response.getStatusInfo().getReasonPhrase(), response.getStatus());
                 return null;
             }
 
             // Get created user ID
             String userId = response.getLocation().getPath().replaceAll(".*/([^/]+)$", "$1");
+            log.info("Utente creato in Keycloak con ID: {}", userId);
+
+            // Imposta la password
+            try {
+                CredentialRepresentation credential = new CredentialRepresentation();
+                credential.setType(CredentialRepresentation.PASSWORD);
+                credential.setValue(password);
+                credential.setTemporary(false);
+                
+                usersResource.get(userId).resetPassword(credential);
+                log.debug("Password impostata con successo per l'utente: {}", userId);
+            } catch (Exception e) {
+                log.error("Errore durante l'impostazione della password per l'utente: {}", userId, e);
+                // Non restituire null qui, l'utente è stato creato anche se la password non è stata impostata
+            }
 
             // Assign roles to the user
             if (roles != null && !roles.isEmpty()) {
-                List<RoleRepresentation> realmRoles = new ArrayList<>();
+                try {
+                    log.debug("Tentativo di assegnare i ruoli: {} all'utente: {}", roles, userId);
+                    List<RoleRepresentation> realmRoles = new ArrayList<>();
 
-                for (String roleName : roles) {
-                    RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
-                    if (role != null) {
-                        realmRoles.add(role);
+                    for (String roleName : roles) {
+                        roleName = roleName.toLowerCase();
+                        RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
+                        if (role != null) {
+                            realmRoles.add(role);
+                            log.debug("Ruolo trovato e aggiunto: {}", roleName);
+                        } else {
+                            log.warn("Ruolo non trovato: {}", roleName);
+                        }
                     }
-                }
 
-                getRealmResource().users().get(userId).roles().realmLevel().add(realmRoles);
+                    if (!realmRoles.isEmpty()) {
+                        getRealmResource().users().get(userId).roles().realmLevel().add(realmRoles);
+                        log.debug("Ruoli assegnati con successo all'utente: {}", userId);
+                    } else {
+                        log.warn("Nessun ruolo valido da assegnare all'utente: {}", userId);
+                    }
+                } catch (Exception e) {
+                    log.error("Errore durante l'assegnazione dei ruoli all'utente: {}", userId, e);
+                    // Non restituire null qui, l'utente è stato creato anche se i ruoli non sono stati assegnati
+                }
             }
 
-            log.info("User created in Keycloak with ID: {}", userId);
             return userId;
         } catch (Exception e) {
-            log.error("Error creating user in Keycloak", e);
+            log.error("Errore durante la creazione dell'utente in Keycloak", e);
             return null;
         }
     }
-
     /**
      * Update an existing user in Keycloak
      */

@@ -87,7 +87,8 @@ public class UserController {
     public ResponseEntity<Object> createUser(@Valid @RequestBody Map<String, Object> userData) {
         try {
             // Extract user details
-            String username = (String) userData.get("name");
+            // Extract user details
+            String username = (String) userData.get("username"); // Changed from "name" to "username"
             String email = (String) userData.get("email");
             String firstName = (String) userData.get("firstName");
             String lastName = (String) userData.get("lastName");
