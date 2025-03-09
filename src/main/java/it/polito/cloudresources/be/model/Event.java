@@ -1,5 +1,6 @@
 package it.polito.cloudresources.be.model;
 
+import it.polito.cloudresources.be.config.DateTimeConfig;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +12,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 
 /**
  * Event entity representing resource bookings
@@ -36,11 +37,11 @@ public class Event {
 
     @NotNull
     @Column(name = "start_time")
-    private LocalDateTime start;
+    private ZonedDateTime start;
 
     @NotNull
     @Column(name = "end_time")
-    private LocalDateTime end;
+    private ZonedDateTime end;
 
     @ManyToOne
     @JoinColumn(name = "resource_id", nullable = false)
@@ -51,8 +52,45 @@ public class Event {
     private User user;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private ZonedDateTime createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private ZonedDateTime updatedAt;
+    
+    /**
+     * Pre-persist hook to set default time zone if none provided
+     */
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
+        }
+        if (updatedAt == null) {
+            updatedAt = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
+        }
+        
+        // Ensure start and end dates have the application's default time zone
+        if (start != null) {
+            start = start.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
+        }
+        if (end != null) {
+            end = end.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
+        }
+    }
+    
+    /**
+     * Pre-update hook to set update time
+     */
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
+        
+        // Ensure start and end dates have the application's default time zone
+        if (start != null) {
+            start = start.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
+        }
+        if (end != null) {
+            end = end.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
+        }
+    }
 }

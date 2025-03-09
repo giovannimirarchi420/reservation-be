@@ -4,6 +4,23 @@ server:
   servlet:
     context-path: /api
 
+# Spring Configuration
+spring:
+  # Jackson JSON Configuration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    date-format: com.fasterxml.jackson.databind.util.StdDateFormat
+    time-zone: UTC
+    default-property-inclusion: non_null
+  
+  # JPA Configuration
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
 # SpringDoc API Documentation
 springdoc:
   api-docs:

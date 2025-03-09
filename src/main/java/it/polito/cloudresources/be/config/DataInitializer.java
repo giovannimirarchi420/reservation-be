@@ -1,9 +1,7 @@
 package it.polito.cloudresources.be.config;
 
-import it.polito.cloudresources.be.model.Resource;
-import it.polito.cloudresources.be.model.ResourceStatus;
-import it.polito.cloudresources.be.model.ResourceType;
-import it.polito.cloudresources.be.model.User;
+import it.polito.cloudresources.be.model.*;
+import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import it.polito.cloudresources.be.repository.UserRepository;
@@ -14,6 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
+import java.time.ZonedDateTime;
 import java.util.Set;
 
 /**
@@ -28,6 +27,7 @@ public class DataInitializer {
     private final ResourceTypeRepository resourceTypeRepository;
     private final ResourceRepository resourceRepository;
     private final UserRepository userRepository;
+    private final EventRepository eventRepository;
 
     /**
      * Initialize sample data
@@ -49,7 +49,12 @@ public class DataInitializer {
             
             // Create sample admin user if none exist
             if (userRepository.count() == 0) {
-                createSampleUser();
+                createSampleUsers();
+            }
+            
+            // Create sample events if none exist
+            if (eventRepository.count() == 0) {
+                createSampleEvents();
             }
             
             log.info("Sample data initialization complete.");
@@ -140,19 +145,82 @@ public class DataInitializer {
     }
 
     /**
-     * Create sample admin user
+     * Create sample users
      */
-    private void createSampleUser() {
-        log.info("Creating sample admin user...");
+    private void createSampleUsers() {
+        log.info("Creating sample users...");
         
         User adminUser = new User();
         adminUser.setName("Admin User");
         adminUser.setEmail("admin@example.com");
-        adminUser.setKeycloakId("admin-keycloak-id");
         adminUser.setAvatar("AU");
         adminUser.setRoles(Set.of("ADMIN"));
         userRepository.save(adminUser);
         
-        log.info("Sample admin user created.");
+        User regularUser = new User();
+        regularUser.setName("Regular User");
+        regularUser.setEmail("user@example.com");
+        regularUser.setAvatar("RU");
+        regularUser.setRoles(Set.of("USER"));
+        userRepository.save(regularUser);
+        
+        log.info("Sample users created.");
+    }
+    
+    /**
+     * Create sample events
+     */
+    private void createSampleEvents() {
+        log.info("Creating sample events...");
+        
+        // Get sample users
+        User adminUser = userRepository.findByEmail("admin@example.com")
+                .orElseThrow(() -> new RuntimeException("Admin user not found"));
+        User regularUser = userRepository.findByEmail("user@example.com")
+                .orElseThrow(() -> new RuntimeException("Regular user not found"));
+                
+        // Get sample resources
+        Resource server1 = resourceRepository.findAll().stream()
+                .filter(r -> r.getName().equals("Server 1"))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Server 1 not found"));
+                
+        Resource gpu = resourceRepository.findAll().stream()
+                .filter(r -> r.getName().equals("NVIDIA Tesla"))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("GPU not found"));
+        
+        // Create events
+        ZonedDateTime now = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
+        
+        Event event1 = new Event();
+        event1.setTitle("Development work");
+        event1.setDescription("Working on Project Alpha");
+        event1.setStart(now.plusDays(1).withHour(9).withMinute(0).withSecond(0));
+        event1.setEnd(now.plusDays(1).withHour(17).withMinute(0).withSecond(0));
+        event1.setResource(server1);
+        event1.setUser(adminUser);
+        eventRepository.save(event1);
+        
+        Event event2 = new Event();
+        event2.setTitle("ML Training");
+        event2.setDescription("Training a new model");
+        event2.setStart(now.plusDays(2).withHour(10).withMinute(0).withSecond(0));
+        event2.setEnd(now.plusDays(2).withHour(16).withMinute(0).withSecond(0));
+        event2.setResource(gpu);
+        event2.setUser(regularUser);
+        eventRepository.save(event2);
+        
+        // Past event
+        Event event3 = new Event();
+        event3.setTitle("Previous Booking");
+        event3.setDescription("Completed work");
+        event3.setStart(now.minusDays(3).withHour(9).withMinute(0).withSecond(0));
+        event3.setEnd(now.minusDays(3).withHour(12).withMinute(0).withSecond(0));
+        event3.setResource(server1);
+        event3.setUser(regularUser);
+        eventRepository.save(event3);
+        
+        log.info("Sample events created.");
     }
 }

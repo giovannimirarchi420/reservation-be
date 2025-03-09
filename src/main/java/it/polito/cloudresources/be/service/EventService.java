@@ -1,5 +1,6 @@
 package it.polito.cloudresources.be.service;
 
+import it.polito.cloudresources.be.config.DateTimeConfig;
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
@@ -9,20 +10,22 @@ import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Service for event operations
+ * Service for event operations with proper time zone handling
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EventService {
 
     private final EventRepository eventRepository;
@@ -70,18 +73,21 @@ public class EventService {
      * Get events by user's Keycloak ID
      */
     public List<EventDTO> getEventsByUserKeycloakId(String keycloakId) {
-        return userRepository.findByKeycloakId(keycloakId)
-                .map(user -> eventRepository.findByUser(user).stream()
-                        .map(this::convertToDTO)
-                        .collect(Collectors.toList()))
-                .orElse(List.of());
+        // Ora usiamo la query ottimizzata del repository
+        return eventRepository.findByUserKeycloakId(keycloakId).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
     }
 
     /**
      * Get events by date range
      */
-    public List<EventDTO> getEventsByDateRange(LocalDateTime startDate, LocalDateTime endDate) {
-        return eventRepository.findByDateRange(startDate, endDate).stream()
+    public List<EventDTO> getEventsByDateRange(ZonedDateTime startDate, ZonedDateTime endDate) {
+        // Make sure both dates have time zone info
+        ZonedDateTime normalizedStartDate = ensureTimeZone(startDate);
+        ZonedDateTime normalizedEndDate = ensureTimeZone(endDate);
+        
+        return eventRepository.findByDateRange(normalizedStartDate, normalizedEndDate).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -91,6 +97,24 @@ public class EventService {
      */
     @Transactional
     public EventDTO createEvent(EventDTO eventDTO) {
+        log.debug("Creating event with DTO: {}", eventDTO);
+        
+        // Set current time if not provided by frontend
+        if (eventDTO.getStart() == null) {
+            eventDTO.setStart(ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID));
+        } else {
+            // Ensure time zone info for start
+            eventDTO.setStart(ensureTimeZone(eventDTO.getStart()));
+        }
+        
+        if (eventDTO.getEnd() == null) {
+            // Default to 1 hour later if end time not provided
+            eventDTO.setEnd(ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID).plusHours(1));
+        } else {
+            // Ensure time zone info for end
+            eventDTO.setEnd(ensureTimeZone(eventDTO.getEnd()));
+        }
+        
         // Validate time period
         if (eventDTO.getEnd().isBefore(eventDTO.getStart())) {
             throw new IllegalStateException("End time must be after start time");
@@ -103,6 +127,8 @@ public class EventService {
         
         Event event = convertToEntity(eventDTO);
         Event savedEvent = eventRepository.save(event);
+        
+        log.debug("Saved event: {}", savedEvent);
         
         // Send notification to resource admin
         notificationService.createSystemNotification(
@@ -118,14 +144,15 @@ public class EventService {
      */
     @Transactional
     public Optional<EventDTO> updateEvent(Long id, EventDTO eventDTO) {
-        // Validate time period
-        if (eventDTO.getEnd().isBefore(eventDTO.getStart())) {
-            throw new IllegalStateException("End time must be after start time");
+        log.debug("Updating event with ID {} using DTO: {}", id, eventDTO);
+        
+        // Ensure time zone info for start and end times if provided
+        if (eventDTO.getStart() != null) {
+            eventDTO.setStart(ensureTimeZone(eventDTO.getStart()));
         }
         
-        // Check for time conflicts (excluding this event)
-        if (hasTimeConflict(eventDTO.getResourceId(), eventDTO.getStart(), eventDTO.getEnd(), id)) {
-            throw new IllegalStateException("The selected time period conflicts with existing bookings");
+        if (eventDTO.getEnd() != null) {
+            eventDTO.setEnd(ensureTimeZone(eventDTO.getEnd()));
         }
         
         return eventRepository.findById(id)
@@ -133,11 +160,32 @@ public class EventService {
                     // Update fields
                     existingEvent.setTitle(eventDTO.getTitle());
                     existingEvent.setDescription(eventDTO.getDescription());
-                    existingEvent.setStart(eventDTO.getStart());
-                    existingEvent.setEnd(eventDTO.getEnd());
+                    
+                    // Only update start and end if provided
+                    if (eventDTO.getStart() != null) {
+                        existingEvent.setStart(eventDTO.getStart());
+                    }
+                    
+                    if (eventDTO.getEnd() != null) {
+                        existingEvent.setEnd(eventDTO.getEnd());
+                    }
+                    
+                    // Validate time period after updates
+                    if (existingEvent.getEnd().isBefore(existingEvent.getStart())) {
+                        throw new IllegalStateException("End time must be after start time");
+                    }
+                    
+                    // Check for time conflicts (excluding this event)
+                    if (hasTimeConflict(
+                            eventDTO.getResourceId() != null ? eventDTO.getResourceId() : existingEvent.getResource().getId(),
+                            existingEvent.getStart(),
+                            existingEvent.getEnd(),
+                            id)) {
+                        throw new IllegalStateException("The selected time period conflicts with existing bookings");
+                    }
                     
                     // Update resource if changed
-                    if (!existingEvent.getResource().getId().equals(eventDTO.getResourceId())) {
+                    if (eventDTO.getResourceId() != null && !existingEvent.getResource().getId().equals(eventDTO.getResourceId())) {
                         Resource newResource = resourceRepository.findById(eventDTO.getResourceId())
                                 .orElseThrow(() -> new EntityNotFoundException("Resource not found"));
                         existingEvent.setResource(newResource);
@@ -145,11 +193,14 @@ public class EventService {
                     
                     // Update user if changed (and provided)
                     if (eventDTO.getUserId() != null && !existingEvent.getUser().getKeycloakId().equals(eventDTO.getUserId())) {
-                        Optional<User> newUser = userRepository.findByKeycloakId(eventDTO.getUserId());
-                        newUser.ifPresent(existingEvent::setUser);
+                        User newUser = userRepository.findByKeycloakId(eventDTO.getUserId())
+                                .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + eventDTO.getUserId()));
+                        existingEvent.setUser(newUser);
                     }
                     
-                    return convertToDTO(eventRepository.save(existingEvent));
+                    Event updatedEvent = eventRepository.save(existingEvent);
+                    log.debug("Updated event: {}", updatedEvent);
+                    return convertToDTO(updatedEvent);
                 });
     }
 
@@ -168,9 +219,25 @@ public class EventService {
     /**
      * Check if there's a time conflict for a resource booking
      */
-    public boolean hasTimeConflict(Long resourceId, LocalDateTime start, LocalDateTime end, Long eventId) {
-        List<Event> conflictingEvents = eventRepository.findConflictingEvents(resourceId, start, end, eventId);
+    public boolean hasTimeConflict(Long resourceId, ZonedDateTime start, ZonedDateTime end, Long eventId) {
+        // Ensure dates have time zone info
+        ZonedDateTime normalizedStart = ensureTimeZone(start);
+        ZonedDateTime normalizedEnd = ensureTimeZone(end);
+        
+        List<Event> conflictingEvents = eventRepository.findConflictingEvents(resourceId, normalizedStart, normalizedEnd, eventId);
         return !conflictingEvents.isEmpty();
+    }
+
+    /**
+     * Ensure a date has time zone info, applying the default if missing
+     */
+    private ZonedDateTime ensureTimeZone(ZonedDateTime dateTime) {
+        if (dateTime == null) {
+            return ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
+        }
+        
+        // A ZonedDateTime always has a zone, so we just normalize to the application's default time zone
+        return dateTime.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
     }
 
     /**
@@ -189,16 +256,24 @@ public class EventService {
      * Convert DTO to entity
      */
     private Event convertToEntity(EventDTO dto) {
-        Event event = modelMapper.map(dto, Event.class);
+        Event event = new Event();
+        
+        // Copiamo i campi semplici
+        event.setId(dto.getId());
+        event.setTitle(dto.getTitle());
+        event.setDescription(dto.getDescription());
+        event.setStart(dto.getStart());
+        event.setEnd(dto.getEnd());
         
         // Set the resource
         Resource resource = resourceRepository.findById(dto.getResourceId())
-                .orElseThrow(() -> new EntityNotFoundException("Resource not found"));
+                .orElseThrow(() -> new EntityNotFoundException("Resource not found with ID: " + dto.getResourceId()));
         event.setResource(resource);
         
         // Set the user by Keycloak ID
+        log.debug("Looking for user with Keycloak ID: {}", dto.getUserId());
         User user = userRepository.findByKeycloakId(dto.getUserId())
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+                .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + dto.getUserId()));
         event.setUser(user);
         
         return event;

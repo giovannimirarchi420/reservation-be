@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
@@ -20,6 +20,12 @@ public interface EventRepository extends JpaRepository<Event, Long> {
      * Find events by user
      */
     List<Event> findByUser(User user);
+    
+    /**
+     * Find events by user's Keycloak ID
+     */
+    @Query("SELECT e FROM Event e WHERE e.user.keycloakId = :keycloakId")
+    List<Event> findByUserKeycloakId(@Param("keycloakId") String keycloakId);
 
     /**
      * Find events by resource
@@ -32,17 +38,18 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     List<Event> findByResourceId(Long resourceId);
 
     /**
-     * Find events by user ID
+     * Find events by user ID (local DB ID)
      */
-    List<Event> findByUserId(Long userId);
+    @Query("SELECT e FROM Event e WHERE e.user.id = :userId")
+    List<Event> findByUserId(@Param("userId") Long userId);
 
     /**
      * Find events within a date range
      */
     @Query("SELECT e FROM Event e WHERE e.start >= :startDate AND e.end <= :endDate")
     List<Event> findByDateRange(
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate);
+            @Param("startDate") ZonedDateTime startDate,
+            @Param("endDate") ZonedDateTime endDate);
 
     /**
      * Find conflicting events for a resource in a time period
@@ -54,7 +61,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             "AND (e.id != :eventId OR :eventId IS NULL)")
     List<Event> findConflictingEvents(
             @Param("resourceId") Long resourceId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end,
+            @Param("start") ZonedDateTime start,
+            @Param("end") ZonedDateTime end,
             @Param("eventId") Long eventId);
 }

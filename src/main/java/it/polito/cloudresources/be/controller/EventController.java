@@ -3,6 +3,7 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import it.polito.cloudresources.be.config.DateTimeConfig;
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.service.EventService;
@@ -15,7 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
@@ -48,8 +49,8 @@ public class EventController {
     @Operation(summary = "Get all events", description = "Retrieves all events with optional filtering")
     public ResponseEntity<List<EventDTO>> getAllEvents(
             @RequestParam(required = false) Long resourceId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime endDate,
             Authentication authentication) {
 
         String currentUserKeycloakId = getCurrentUserKeycloakId(authentication);
@@ -203,11 +204,15 @@ public class EventController {
     @Operation(summary = "Check for conflicts", description = "Checks if an event conflicts with existing bookings")
     public ResponseEntity<ApiResponseDTO> checkConflicts(
             @RequestParam Long resourceId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime start,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime end,
             @RequestParam(required = false) Long eventId) {
         
-        boolean hasConflicts = eventService.hasTimeConflict(resourceId, start, end, eventId);
+        // If start or end time is not provided, use the current time and an hour later
+        ZonedDateTime effectiveStart = start != null ? start : ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
+        ZonedDateTime effectiveEnd = end != null ? end : ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID).plusHours(1);
+        
+        boolean hasConflicts = eventService.hasTimeConflict(resourceId, effectiveStart, effectiveEnd, eventId);
         
         return ResponseEntity.ok(new ApiResponseDTO(
                 !hasConflicts,
