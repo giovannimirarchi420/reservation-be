@@ -49,20 +49,3 @@ keycloak:
 app:
   cors:
     allowed-origins: ${FRONTEND_APP_URL},http://localhost:3000
-
-
-# Logging Configuration
-logging:
-  level:
-    org:
-      keycloak: DEBUG
-      springframework: INFO
-      hibernate:
-        SQL: DEBUG
-        type:
-          descriptor:
-            sql:
-              BasicBinder: TRACE
-      springframework.security: DEBUG
-    com:
-      cloudresources: DEBUG

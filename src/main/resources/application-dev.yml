@@ -39,14 +39,3 @@ app:
     dev-mode: true
     admin-username: admin
     admin-password: admin
-
-# Logging Configuration
-logging:
-  level:
-    org:
-      springframework: INFO
-      hibernate:
-        SQL: DEBUG
-      springframework.security: DEBUG
-    it:
-      polito: DEBUG

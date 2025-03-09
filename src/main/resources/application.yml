@@ -28,3 +28,22 @@ springdoc:
   swagger-ui:
     path: /swagger-ui
     operationsSorter: method
+
+# Logging Configuration
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/application.log
+  level:
+    root: INFO
+    it.polito.cloudresources.be: INFO
+    it.polito.cloudresources.be.config.RequestLoggingFilter: INFO
+    it.polito.cloudresources.be.config.SecurityEventLogger: INFO
+    it.polito.cloudresources.be.config.MethodLoggingAspect: DEBUG
+    org.springframework.security: WARN
+    org.springframework.web: INFO
+    org.hibernate.SQL: INFO
+  # Per abilitare il logging dei dettagli delle richieste HTTP:
+    org.springframework.web.filter.CommonsRequestLoggingFilter: DEBUG

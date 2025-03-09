@@ -192,6 +192,7 @@ public class UserController {
      * Update current user's profile
      */
     @PutMapping("/me")
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Update profile", description = "Updates the current user's profile")
     public ResponseEntity<Object> updateProfile(
             @Valid @RequestBody Map<String, Object> userData,
