@@ -87,14 +87,15 @@ public class UserController {
     public ResponseEntity<Object> createUser(@Valid @RequestBody Map<String, Object> userData) {
         try {
             // Extract user details
-            String username = (String) userData.get("username");
+            String username = (String) userData.get("name");
             String email = (String) userData.get("email");
             String firstName = (String) userData.get("firstName");
             String lastName = (String) userData.get("lastName");
             String password = (String) userData.get("password");
             @SuppressWarnings("unchecked")
             List<String> roles = (List<String>) userData.get("roles");
-            
+
+
             // Create user in Keycloak
             String keycloakId = keycloakService.createUser(username, email, firstName, lastName, password, roles);
             

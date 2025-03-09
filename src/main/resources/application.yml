@@ -4,62 +4,6 @@ server:
   servlet:
     context-path: /api
 
-## Database Configuration
-#spring:
-#  datasource:
-#    url: jdbc:postgresql://localhost:5432/reservation_db
-#    driverClassName: org.postgresql.Driver
-#    username: postgres
-#    password: postgres
-#  jpa:
-#    database-platform: org.hibernate.dialect.PostgreSQLDialect
-#
-#  # Jackson Date Format
-#  jackson:
-#    date-format: yyyy-MM-dd HH:mm:ss
-#    time-zone: UTC
-#
-#  # Security Configuration for OAuth2 Resource Server
-#  security:
-#    oauth2:
-#      resourceserver:
-#        jwt:
-#          issuer-uri: http://localhost:8180/realms/resource-management
-#          jwk-set-uri: http://localhost:8180/realms/resource-management/protocol/openid-connect/certs
-#
-## Keycloak Configuration
-#keycloak:
-#  auth-server-url: http://localhost:8180
-#  realm: resource-management
-#  resource: resource-management-app
-#  credentials:
-#    secret: a-super-mega-secret
-#  use-resource-role-mappings: true
-#  bearer-only: true
-#  admin:
-#    username: admin
-#    password: admin
-#
-## Application specific settings
-#app:
-#  cors:
-#    allowed-origins: http://localhost:3000
-#
-## Logging Configuration
-#logging:
-#  level:
-#    org:
-#      springframework: INFO
-#      hibernate:
-#        SQL: DEBUG
-#        type:
-#          descriptor:
-#            sql:
-#              BasicBinder: TRACE
-#      springframework.security: DEBUG
-#    com:
-#      cloudresources: DEBUG
-
 # SpringDoc API Documentation
 springdoc:
   api-docs:
