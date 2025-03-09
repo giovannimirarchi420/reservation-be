@@ -87,8 +87,7 @@ public class UserController {
     public ResponseEntity<Object> createUser(@Valid @RequestBody Map<String, Object> userData) {
         try {
             // Extract user details
-            // Extract user details
-            String username = (String) userData.get("username"); // Changed from "name" to "username"
+            String username = (String) userData.get("username");
             String email = (String) userData.get("email");
             String firstName = (String) userData.get("firstName");
             String lastName = (String) userData.get("lastName");
@@ -107,13 +106,25 @@ public class UserController {
             
             // Create user in our database
             UserDTO userDTO = new UserDTO();
-            userDTO.setName(firstName + " " + lastName);
+            userDTO.setUsername(username);
+            userDTO.setFirstName(firstName);
+            userDTO.setLastName(lastName);
             userDTO.setEmail(email);
             userDTO.setKeycloakId(keycloakId);
             userDTO.setRoles(roles.stream().map(String::toUpperCase).collect(Collectors.toSet()));
             
             if (userData.containsKey("avatar")) {
                 userDTO.setAvatar((String) userData.get("avatar"));
+            } else {
+                // Create initials avatar
+                String avatar = "";
+                if (firstName != null && !firstName.isEmpty()) {
+                    avatar += firstName.substring(0, 1).toUpperCase();
+                }
+                if (lastName != null && !lastName.isEmpty()) {
+                    avatar += lastName.substring(0, 1).toUpperCase();
+                }
+                userDTO.setAvatar(avatar);
             }
             
             UserDTO createdUser = userService.createUser(userDTO);
@@ -154,10 +165,22 @@ public class UserController {
             userDTO.setId(id);
             userDTO.setKeycloakId(existingUser.getKeycloakId());
             
-            if (userData.containsKey("firstName") && userData.containsKey("lastName")) {
-                userDTO.setName(userData.get("firstName") + " " + userData.get("lastName"));
+            if (userData.containsKey("username")) {
+                userDTO.setUsername((String) userData.get("username"));
             } else {
-                userDTO.setName(existingUser.getName());
+                userDTO.setUsername(existingUser.getUsername());
+            }
+            
+            if (userData.containsKey("firstName")) {
+                userDTO.setFirstName((String) userData.get("firstName"));
+            } else {
+                userDTO.setFirstName(existingUser.getFirstName());
+            }
+            
+            if (userData.containsKey("lastName")) {
+                userDTO.setLastName((String) userData.get("lastName"));
+            } else {
+                userDTO.setLastName(existingUser.getLastName());
             }
             
             if (userData.containsKey("email")) {
@@ -210,8 +233,11 @@ public class UserController {
             // Restrict which fields can be updated by the user themselves
             Map<String, Object> keycloakUpdate = new java.util.HashMap<>();
             
-            if (userData.containsKey("firstName") && userData.containsKey("lastName")) {
+            if (userData.containsKey("firstName")) {
                 keycloakUpdate.put("firstName", userData.get("firstName"));
+            }
+            
+            if (userData.containsKey("lastName")) {
                 keycloakUpdate.put("lastName", userData.get("lastName"));
             }
             
@@ -238,10 +264,19 @@ public class UserController {
             userDTO.setId(existingUser.getId());
             userDTO.setKeycloakId(keycloakId);
             
-            if (userData.containsKey("firstName") && userData.containsKey("lastName")) {
-                userDTO.setName(userData.get("firstName") + " " + userData.get("lastName"));
+            // Username can't be changed by the user
+            userDTO.setUsername(existingUser.getUsername());
+            
+            if (userData.containsKey("firstName")) {
+                userDTO.setFirstName((String) userData.get("firstName"));
             } else {
-                userDTO.setName(existingUser.getName());
+                userDTO.setFirstName(existingUser.getFirstName());
+            }
+            
+            if (userData.containsKey("lastName")) {
+                userDTO.setLastName((String) userData.get("lastName"));
+            } else {
+                userDTO.setLastName(existingUser.getLastName());
             }
             
             if (userData.containsKey("email")) {

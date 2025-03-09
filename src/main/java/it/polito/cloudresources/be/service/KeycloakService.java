@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Service for interacting with Keycloak
@@ -223,9 +224,10 @@ public class KeycloakService {
             return null;
         }
     }
-    /**
+   /**
      * Update an existing user in Keycloak
      */
+    @Transactional
     public boolean updateUser(String userId, Map<String, Object> attributes) {
         try {
             UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
@@ -242,11 +244,17 @@ public class KeycloakService {
                 user.setLastName((String) attributes.get("lastName"));
             }
 
+            if (attributes.containsKey("username")) {
+                user.setUsername((String) attributes.get("username"));
+            }
+
             if (attributes.containsKey("enabled")) {
                 user.setEnabled((Boolean) attributes.get("enabled"));
             }
 
+            // Update basic user info first
             getRealmResource().users().get(userId).update(user);
+            log.debug("Basic user info updated for user: {}", userId);
 
             // Update password if provided
             if (attributes.containsKey("password")) {
@@ -256,31 +264,62 @@ public class KeycloakService {
                 credential.setTemporary(false);
 
                 getRealmResource().users().get(userId).resetPassword(credential);
+                log.debug("Password updated for user: {}", userId);
             }
 
             // Update roles if provided
             if (attributes.containsKey("roles")) {
-                @SuppressWarnings("unchecked")
-                List<String> roles = (List<String>) attributes.get("roles");
+                try {
+                    @SuppressWarnings("unchecked")
+                    List<String> roles = (List<String>) attributes.get("roles");
+                    log.debug("Updating roles for user {}: {}", userId, roles);
 
-                // Remove existing roles
-                List<RoleRepresentation> currentRoles = getRealmResource().users().get(userId).roles().realmLevel().listAll();
-                if (!currentRoles.isEmpty()) {
-                    getRealmResource().users().get(userId).roles().realmLevel().remove(currentRoles);
-                }
-
-                // Add new roles
-                if (roles != null && !roles.isEmpty()) {
-                    List<RoleRepresentation> newRoles = new ArrayList<>();
-
+                    // Get user resource and roles
+                    var userResource = getRealmResource().users().get(userId);
+                    var userRolesResource = userResource.roles();
+                    
+                    // Get current assigned realm roles
+                    var currentRoles = userRolesResource.realmLevel().listEffective();
+                    log.debug("Current effective roles for user {}: {}", userId, 
+                            currentRoles.stream().map(RoleRepresentation::getName).collect(Collectors.toList()));
+                    
+                    // Get all available realm roles 
+                    var availableRoles = getRealmResource().roles().list();
+                    Map<String, RoleRepresentation> availableRolesMap = availableRoles.stream()
+                        .collect(Collectors.toMap(
+                            RoleRepresentation::getName,
+                            role -> role,
+                            (r1, r2) -> r1  // In case of duplicate names, keep the first one
+                        ));
+                    
+                    // Ensure roles exist in realm
                     for (String roleName : roles) {
-                        RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
-                        if (role != null) {
-                            newRoles.add(role);
+                        if (!availableRolesMap.containsKey(roleName)) {
+                            log.warn("Role not found in realm: {}", roleName);
                         }
                     }
 
-                    getRealmResource().users().get(userId).roles().realmLevel().add(newRoles);
+                    // Filter for existing roles only
+                    List<RoleRepresentation> rolesToAdd = roles.stream()
+                        .filter(availableRolesMap::containsKey)
+                        .map(availableRolesMap::get)
+                        .collect(Collectors.toList());
+                    
+                    if (!rolesToAdd.isEmpty()) {
+                        log.debug("Removing all current roles for user: {}", userId);
+                        // Remove all current roles
+                        userRolesResource.realmLevel().remove(currentRoles);
+                        
+                        log.debug("Adding roles for user {}: {}", userId, 
+                                rolesToAdd.stream().map(RoleRepresentation::getName).collect(Collectors.toList()));
+                        // Add new roles
+                        userRolesResource.realmLevel().add(rolesToAdd);
+                    } else {
+                        log.warn("No valid roles found to add for user: {}", userId);
+                    }
+                } catch (Exception e) {
+                    log.error("Error updating roles for user: {}", userId, e);
+                    // Don't throw exception - continue with the update even if roles fail
                 }
             }
 
@@ -291,7 +330,6 @@ public class KeycloakService {
             return false;
         }
     }
-
     /**
      * Delete a user from Keycloak
      */

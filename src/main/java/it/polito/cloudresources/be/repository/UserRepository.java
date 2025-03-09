@@ -18,6 +18,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
     
     /**
+     * Find a user by username
+     */
+    Optional<User> findByUsername(String username);
+    
+    /**
      * Find a user by Keycloak ID
      */
     Optional<User> findByKeycloakId(String keycloakId);
@@ -26,6 +31,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * Check if a user with given email exists
      */
     Boolean existsByEmail(String email);
+    
+    /**
+     * Check if a user with given username exists
+     */
+    Boolean existsByUsername(String username);
     
     /**
      * Find users by role

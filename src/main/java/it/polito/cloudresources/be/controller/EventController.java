@@ -53,18 +53,11 @@ public class EventController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime endDate,
             Authentication authentication) {
 
-        String currentUserKeycloakId = getCurrentUserKeycloakId(authentication);
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-
         List<EventDTO> events;
         if (resourceId != null) {
             events = eventService.getEventsByResource(resourceId);
         } else if (startDate != null && endDate != null) {
             events = eventService.getEventsByDateRange(startDate, endDate);
-        } else if (!isAdmin) {
-            // Regular users can only see their own events if no filters are applied
-            events = eventService.getEventsByUserKeycloakId(currentUserKeycloakId);
         } else {
             events = eventService.getAllEvents();
         }

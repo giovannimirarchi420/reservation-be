@@ -47,6 +47,14 @@ public class UserService {
         return userRepository.findByEmail(email)
                 .map(user -> modelMapper.map(user, UserDTO.class));
     }
+    
+    /**
+     * Get user by username
+     */
+    public Optional<UserDTO> getUserByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .map(user -> modelMapper.map(user, UserDTO.class));
+    }
 
     /**
      * Get user by Keycloak ID
@@ -84,9 +92,21 @@ public class UserService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
         // Update fields
-        existingUser.setName(userDTO.getName());
-        existingUser.setEmail(userDTO.getEmail());
-        existingUser.setAvatar(userDTO.getAvatar());
+        if (userDTO.getUsername() != null) {
+            existingUser.setUsername(userDTO.getUsername());
+        }
+        if (userDTO.getFirstName() != null) {
+            existingUser.setFirstName(userDTO.getFirstName());
+        }
+        if (userDTO.getLastName() != null) {
+            existingUser.setLastName(userDTO.getLastName());
+        }
+        if (userDTO.getEmail() != null) {
+            existingUser.setEmail(userDTO.getEmail());
+        }
+        if (userDTO.getAvatar() != null) {
+            existingUser.setAvatar(userDTO.getAvatar());
+        }
         
         // Update roles if provided
         if (userDTO.getRoles() != null) {
@@ -140,7 +160,9 @@ public class UserService {
                     }
                     
                     // Update user data
-                    user.setName(keycloakUser.getFirstName() + " " + keycloakUser.getLastName());
+                    user.setUsername(keycloakUser.getUsername());
+                    user.setFirstName(keycloakUser.getFirstName());
+                    user.setLastName(keycloakUser.getLastName());
                     user.setEmail(keycloakUser.getEmail());
                     
                     // Get roles from Keycloak

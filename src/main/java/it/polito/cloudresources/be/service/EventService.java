@@ -132,7 +132,7 @@ public class EventService {
         
         // Send notification to resource admin
         notificationService.createSystemNotification(
-                "New booking created for " + event.getResource().getName() + " by " + event.getUser().getName(),
+                "New booking created for " + event.getResource().getName() + " by " + event.getUser().getFullName(),
                 "New booking from " + eventDTO.getStart() + " to " + eventDTO.getEnd()
         );
         
@@ -242,13 +242,27 @@ public class EventService {
 
     /**
      * Convert entity to DTO
+     * Modificato per evitare l'ambiguità di ModelMapper usando conversione manuale
      */
     private EventDTO convertToDTO(Event event) {
-        EventDTO dto = modelMapper.map(event, EventDTO.class);
+        // Non usiamo ModelMapper per evitare l'ambiguità
+        EventDTO dto = new EventDTO();
+        
+        // Copiamo manualmente i campi
+        dto.setId(event.getId());
+        dto.setTitle(event.getTitle());
+        dto.setDescription(event.getDescription());
+        dto.setStart(event.getStart());
+        dto.setEnd(event.getEnd());
+        
+        // Copiamo i campi delle relazioni
         dto.setResourceId(event.getResource().getId());
         dto.setResourceName(event.getResource().getName());
         dto.setUserId(event.getUser().getKeycloakId());
-        dto.setUserName(event.getUser().getName());
+        
+        // Qui usiamo esplicitamente getFullName() per evitare ambiguità
+        dto.setUserName(event.getUser().getUsername());
+        
         return dto;
     }
 

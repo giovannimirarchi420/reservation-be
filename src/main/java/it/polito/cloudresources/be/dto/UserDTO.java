@@ -19,9 +19,17 @@ import java.util.Set;
 public class UserDTO {
     private Long id;
 
-    @NotBlank(message = "Name is required")
-    @Size(max = 100, message = "Name cannot exceed 100 characters")
-    private String name;
+    @NotBlank(message = "Username is required")
+    @Size(max = 50, message = "Username cannot exceed 50 characters")
+    private String username;
+
+    @NotBlank(message = "First name is required")
+    @Size(max = 50, message = "First name cannot exceed 50 characters")
+    private String firstName;
+
+    @NotBlank(message = "Last name is required")
+    @Size(max = 50, message = "Last name cannot exceed 50 characters")
+    private String lastName;
 
     @NotBlank(message = "Email is required")
     @Email(message = "Invalid email format")
@@ -32,4 +40,11 @@ public class UserDTO {
     private Set<String> roles;
 
     private String keycloakId;
+    
+    /**
+     * Get full name from firstName and lastName
+     */
+    public String getFullName() {
+        return firstName + " " + lastName;
+    }
 }

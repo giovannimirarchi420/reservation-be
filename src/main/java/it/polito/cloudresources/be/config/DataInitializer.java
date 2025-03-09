@@ -151,14 +151,18 @@ public class DataInitializer {
         log.info("Creating sample users...");
         
         User adminUser = new User();
-        adminUser.setName("Admin User");
+        adminUser.setUsername("admin1");
+        adminUser.setFirstName("Mario");
+        adminUser.setLastName("Rossi");
         adminUser.setEmail("admin@example.com");
         adminUser.setAvatar("AU");
         adminUser.setRoles(Set.of("ADMIN"));
         userRepository.save(adminUser);
         
         User regularUser = new User();
-        regularUser.setName("Regular User");
+        adminUser.setUsername("user1");
+        adminUser.setFirstName("Dario");
+        adminUser.setLastName("Argento");
         regularUser.setEmail("user@example.com");
         regularUser.setAvatar("RU");
         regularUser.setRoles(Set.of("USER"));

@@ -26,7 +26,8 @@ import java.util.Set;
 @Table(name = "users",
         uniqueConstraints = {
                 @UniqueConstraint(columnNames = "email"),
-                @UniqueConstraint(columnNames = "keycloak_id")
+                @UniqueConstraint(columnNames = "keycloak_id"),
+                @UniqueConstraint(columnNames = "username")
         })
 @Data
 @NoArgsConstructor
@@ -38,8 +39,16 @@ public class User {
     private Long id;
 
     @NotBlank
-    @Size(max = 100)
-    private String name;
+    @Size(max = 50)
+    private String username;
+
+    @NotBlank
+    @Size(max = 50)
+    private String firstName;
+
+    @NotBlank
+    @Size(max = 50)
+    private String lastName;
 
     @NotBlank
     @Size(max = 100)
@@ -86,5 +95,12 @@ public class User {
     @PreUpdate
     public void preUpdate() {
         updatedAt = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
+    }
+    
+    /**
+     * Get full name from firstName and lastName
+     */
+    public String getFullName() {
+        return firstName + " " + lastName;
     }
 }
