@@ -3,16 +3,15 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.NotificationDTO;
 import it.polito.cloudresources.be.service.NotificationService;
 import it.polito.cloudresources.be.service.UserService;
+import it.polito.cloudresources.be.util.ControllerUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,17 +28,7 @@ public class NotificationController {
 
     private final NotificationService notificationService;
     private final UserService userService;
-
-    /**
-     * Get current user's Keycloak ID from JWT token
-     */
-    private String getCurrentUserKeycloakId(Authentication authentication) {
-        if (authentication instanceof JwtAuthenticationToken) {
-            JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
-            return jwtAuth.getToken().getSubject();
-        }
-        return null;
-    }
+    private final ControllerUtils utils;
 
     /**
      * Get current user's notifications
@@ -50,8 +39,12 @@ public class NotificationController {
             @RequestParam(required = false, defaultValue = "false") boolean unreadOnly,
             Authentication authentication) {
         
-        String keycloakId = getCurrentUserKeycloakId(authentication);
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         Long userId = userService.getUserIdByKeycloakId(keycloakId);
+        
+        if (userId == null) {
+            return ResponseEntity.notFound().build();
+        }
         
         List<NotificationDTO> notifications;
         if (unreadOnly) {
@@ -69,8 +62,12 @@ public class NotificationController {
     @GetMapping("/unread-count")
     @Operation(summary = "Get unread count", description = "Gets the count of unread notifications for the current user")
     public ResponseEntity<Integer> getUnreadCount(Authentication authentication) {
-        String keycloakId = getCurrentUserKeycloakId(authentication);
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         Long userId = userService.getUserIdByKeycloakId(keycloakId);
+        
+        if (userId == null) {
+            return ResponseEntity.notFound().build();
+        }
         
         int count = notificationService.getUnreadNotificationCount(userId);
         return ResponseEntity.ok(count);
@@ -85,8 +82,12 @@ public class NotificationController {
             @PathVariable Long id,
             Authentication authentication) {
         
-        String keycloakId = getCurrentUserKeycloakId(authentication);
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         Long userId = userService.getUserIdByKeycloakId(keycloakId);
+        
+        if (userId == null) {
+            return ResponseEntity.notFound().build();
+        }
         
         return notificationService.markAsRead(id, userId)
                 .map(ResponseEntity::ok)
@@ -98,12 +99,16 @@ public class NotificationController {
      */
     @PatchMapping("/mark-all-read")
     @Operation(summary = "Mark all as read", description = "Marks all notifications as read for the current user")
-    public ResponseEntity<ApiResponseDTO> markAllAsRead(Authentication authentication) {
-        String keycloakId = getCurrentUserKeycloakId(authentication);
+    public ResponseEntity<Object> markAllAsRead(Authentication authentication) {
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         Long userId = userService.getUserIdByKeycloakId(keycloakId);
         
+        if (userId == null) {
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
+        }
+        
         notificationService.markAllAsRead(userId);
-        return ResponseEntity.ok(new ApiResponseDTO(true, "All notifications marked as read"));
+        return utils.createSuccessResponse("All notifications marked as read");
     }
 
     /**
@@ -111,20 +116,23 @@ public class NotificationController {
      */
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete notification", description = "Deletes a notification")
-    public ResponseEntity<ApiResponseDTO> deleteNotification(
+    public ResponseEntity<Object> deleteNotification(
             @PathVariable Long id,
             Authentication authentication) {
         
-        String keycloakId = getCurrentUserKeycloakId(authentication);
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         Long userId = userService.getUserIdByKeycloakId(keycloakId);
+        
+        if (userId == null) {
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
+        }
         
         boolean deleted = notificationService.deleteNotification(id, userId);
         
         if (deleted) {
-            return ResponseEntity.ok(new ApiResponseDTO(true, "Notification deleted successfully"));
+            return utils.createSuccessResponse("Notification deleted successfully");
         } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new ApiResponseDTO(false, "Notification not found or access denied"));
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "Notification not found or access denied");
         }
     }
 

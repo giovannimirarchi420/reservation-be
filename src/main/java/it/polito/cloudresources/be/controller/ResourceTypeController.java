@@ -3,9 +3,9 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.ResourceTypeDTO;
 import it.polito.cloudresources.be.service.ResourceTypeService;
+import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -27,6 +27,7 @@ import java.util.List;
 public class ResourceTypeController {
 
     private final ResourceTypeService resourceTypeService;
+    private final ControllerUtils utils;
 
     /**
      * Get all resource types
@@ -79,14 +80,9 @@ public class ResourceTypeController {
      */
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete resource type", description = "Deletes an existing resource type")
-    public ResponseEntity<ApiResponseDTO> deleteResourceType(@PathVariable Long id) {
-        boolean deleted = resourceTypeService.deleteResourceType(id);
-        
-        if (deleted) {
-            return ResponseEntity.ok(new ApiResponseDTO(true, "Resource type deleted successfully"));
-        } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new ApiResponseDTO(false, "Resource type not found or in use"));
-        }
+    public ResponseEntity<Object> deleteResourceType(@PathVariable Long id) {
+        return resourceTypeService.deleteResourceType(id) ? 
+            utils.createSuccessResponse("Resource type deleted successfully") :
+            utils.createErrorResponse(HttpStatus.NOT_FOUND, "Resource type not found or in use");
     }
 }

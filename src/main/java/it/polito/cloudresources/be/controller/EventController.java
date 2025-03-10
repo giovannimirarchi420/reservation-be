@@ -7,13 +7,13 @@ import it.polito.cloudresources.be.config.DateTimeConfig;
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.service.EventService;
+import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZonedDateTime;
@@ -30,17 +30,7 @@ import java.util.List;
 public class EventController {
 
     private final EventService eventService;
-
-    /**
-     * Get current user's Keycloak ID from JWT token
-     */
-    private String getCurrentUserKeycloakId(Authentication authentication) {
-        if (authentication instanceof JwtAuthenticationToken) {
-            JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
-            return jwtAuth.getToken().getSubject();
-        }
-        return null;
-    }
+    private final ControllerUtils utils;
 
     /**
      * Get all events
@@ -71,7 +61,7 @@ public class EventController {
     @GetMapping("/my-events")
     @Operation(summary = "Get current user's events", description = "Retrieves events for the currently authenticated user")
     public ResponseEntity<List<EventDTO>> getMyEvents(Authentication authentication) {
-        String keycloakId = getCurrentUserKeycloakId(authentication);
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         List<EventDTO> events = eventService.getEventsByUserKeycloakId(keycloakId);
         return ResponseEntity.ok(events);
     }
@@ -82,9 +72,8 @@ public class EventController {
     @GetMapping("/{id}")
     @Operation(summary = "Get event by ID", description = "Retrieves a specific event by its ID")
     public ResponseEntity<EventDTO> getEventById(@PathVariable Long id, Authentication authentication) {
-        String currentUserKeycloakId = getCurrentUserKeycloakId(authentication);
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+        boolean isAdmin = utils.isAdmin(authentication);
 
         return eventService.getEventById(id)
                 .filter(event -> isAdmin || event.getUserId().equals(currentUserKeycloakId))
@@ -101,15 +90,14 @@ public class EventController {
             @Valid @RequestBody EventDTO eventDTO, 
             Authentication authentication) {
         
-        String keycloakId = getCurrentUserKeycloakId(authentication);
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         eventDTO.setUserId(keycloakId);
         
         try {
             EventDTO createdEvent = eventService.createEvent(eventDTO);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdEvent);
         } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest()
-                    .body(new ApiResponseDTO(false, e.getMessage()));
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -123,9 +111,8 @@ public class EventController {
             @Valid @RequestBody EventDTO eventDTO,
             Authentication authentication) {
         
-        String currentUserKeycloakId = getCurrentUserKeycloakId(authentication);
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+        boolean isAdmin = utils.isAdmin(authentication);
         
         // Check if the event belongs to the current user or if they are an admin
         EventDTO existingEvent = eventService.getEventById(id).orElse(null);
@@ -134,8 +121,7 @@ public class EventController {
         }
         
         if (!isAdmin && !existingEvent.getUserId().equals(currentUserKeycloakId)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(new ApiResponseDTO(false, "You can only update your own events"));
+            return utils.createErrorResponse(HttpStatus.FORBIDDEN, "You can only update your own events");
         }
 
         try {
@@ -150,8 +136,7 @@ public class EventController {
                     .map(updatedEvent -> ResponseEntity.ok((Object)updatedEvent))
                     .orElse(ResponseEntity.notFound().build());
         } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest()
-                    .body(new ApiResponseDTO(false, e.getMessage()));
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -160,33 +145,29 @@ public class EventController {
      */
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete event", description = "Deletes an existing booking event")
-    public ResponseEntity<ApiResponseDTO> deleteEvent(
+    public ResponseEntity<Object> deleteEvent(
             @PathVariable Long id,
             Authentication authentication) {
         
-        String currentUserKeycloakId = getCurrentUserKeycloakId(authentication);
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+        boolean isAdmin = utils.isAdmin(authentication);
         
         // Check if the event belongs to the current user or if they are an admin
         EventDTO existingEvent = eventService.getEventById(id).orElse(null);
         if (existingEvent == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new ApiResponseDTO(false, "Event not found"));
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "Event not found");
         }
         
         if (!isAdmin && !existingEvent.getUserId().equals(currentUserKeycloakId)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(new ApiResponseDTO(false, "You can only delete your own events"));
+            return utils.createErrorResponse(HttpStatus.FORBIDDEN, "You can only delete your own events");
         }
         
         boolean deleted = eventService.deleteEvent(id);
         
         if (deleted) {
-            return ResponseEntity.ok(new ApiResponseDTO(true, "Event deleted successfully"));
+            return utils.createSuccessResponse("Event deleted successfully");
         } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new ApiResponseDTO(false, "Event not found"));
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "Event not found");
         }
     }
 
@@ -207,9 +188,9 @@ public class EventController {
         
         boolean hasConflicts = eventService.hasTimeConflict(resourceId, effectiveStart, effectiveEnd, eventId);
         
-        return ResponseEntity.ok(new ApiResponseDTO(
-                !hasConflicts,
-                hasConflicts ? "The selected time period conflicts with existing bookings" : "No conflicts found"
-        ));
+        return utils.createSuccessResponse(
+                hasConflicts ? "The selected time period conflicts with existing bookings" : "No conflicts found",
+                !hasConflicts
+        );
     }
 }

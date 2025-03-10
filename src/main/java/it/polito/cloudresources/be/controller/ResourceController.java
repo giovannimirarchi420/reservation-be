@@ -3,10 +3,10 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.ResourceDTO;
 import it.polito.cloudresources.be.model.ResourceStatus;
 import it.polito.cloudresources.be.service.ResourceService;
+import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -27,6 +27,7 @@ import java.util.List;
 public class ResourceController {
 
     private final ResourceService resourceService;
+    private final ControllerUtils utils;
 
     /**
      * Get all resources
@@ -107,15 +108,10 @@ public class ResourceController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete resource", description = "Deletes an existing resource (Admin only)")
-    public ResponseEntity<ApiResponseDTO> deleteResource(@PathVariable Long id) {
-        boolean deleted = resourceService.deleteResource(id);
-        
-        if (deleted) {
-            return ResponseEntity.ok(new ApiResponseDTO(true, "Resource deleted successfully"));
-        } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new ApiResponseDTO(false, "Resource not found"));
-        }
+    public ResponseEntity<Object> deleteResource(@PathVariable Long id) {
+        return resourceService.deleteResource(id) ? 
+            utils.createSuccessResponse("Resource deleted successfully") :
+            utils.createErrorResponse(HttpStatus.NOT_FOUND, "Resource not found");
     }
 
     /**

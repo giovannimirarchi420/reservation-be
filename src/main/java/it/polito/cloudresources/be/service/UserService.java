@@ -21,14 +21,13 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final ModelMapper modelMapper;
-    private final KeycloakService keycloakService;
 
     /**
      * Get all users
      */
     public List<UserDTO> getAllUsers() {
         return userRepository.findAll().stream()
-                .map(user -> modelMapper.map(user, UserDTO.class))
+                .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
@@ -37,7 +36,7 @@ public class UserService {
      */
     public Optional<UserDTO> getUserById(Long id) {
         return userRepository.findById(id)
-                .map(user -> modelMapper.map(user, UserDTO.class));
+                .map(this::mapToDTO);
     }
 
     /**
@@ -45,7 +44,7 @@ public class UserService {
      */
     public Optional<UserDTO> getUserByEmail(String email) {
         return userRepository.findByEmail(email)
-                .map(user -> modelMapper.map(user, UserDTO.class));
+                .map(this::mapToDTO);
     }
     
     /**
@@ -53,7 +52,7 @@ public class UserService {
      */
     public Optional<UserDTO> getUserByUsername(String username) {
         return userRepository.findByUsername(username)
-                .map(user -> modelMapper.map(user, UserDTO.class));
+                .map(this::mapToDTO);
     }
 
     /**
@@ -61,7 +60,7 @@ public class UserService {
      */
     public Optional<UserDTO> getUserByKeycloakId(String keycloakId) {
         return userRepository.findByKeycloakId(keycloakId)
-                .map(user -> modelMapper.map(user, UserDTO.class));
+                .map(this::mapToDTO);
     }
 
     /**
@@ -78,9 +77,9 @@ public class UserService {
      */
     @Transactional
     public UserDTO createUser(UserDTO userDTO) {
-        User user = modelMapper.map(userDTO, User.class);
+        User user = mapToEntity(userDTO);
         User savedUser = userRepository.save(user);
-        return modelMapper.map(savedUser, UserDTO.class);
+        return mapToDTO(savedUser);
     }
 
     /**
@@ -91,30 +90,9 @@ public class UserService {
         User existingUser = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
-        // Update fields
-        if (userDTO.getUsername() != null) {
-            existingUser.setUsername(userDTO.getUsername());
-        }
-        if (userDTO.getFirstName() != null) {
-            existingUser.setFirstName(userDTO.getFirstName());
-        }
-        if (userDTO.getLastName() != null) {
-            existingUser.setLastName(userDTO.getLastName());
-        }
-        if (userDTO.getEmail() != null) {
-            existingUser.setEmail(userDTO.getEmail());
-        }
-        if (userDTO.getAvatar() != null) {
-            existingUser.setAvatar(userDTO.getAvatar());
-        }
-        
-        // Update roles if provided
-        if (userDTO.getRoles() != null) {
-            existingUser.setRoles(userDTO.getRoles());
-        }
-        
+        updateUserFields(existingUser, userDTO);
         User updatedUser = userRepository.save(existingUser);
-        return modelMapper.map(updatedUser, UserDTO.class);
+        return mapToDTO(updatedUser);
     }
 
     /**
@@ -122,11 +100,12 @@ public class UserService {
      */
     @Transactional
     public boolean deleteUser(Long id) {
-        if (userRepository.existsById(id)) {
-            userRepository.deleteById(id);
-            return true;
+        if (!userRepository.existsById(id)) {
+            return false;
         }
-        return false;
+        
+        userRepository.deleteById(id);
+        return true;
     }
 
     /**
@@ -134,62 +113,41 @@ public class UserService {
      */
     public List<UserDTO> getUsersByRole(String role) {
         return userRepository.findByRolesContaining(role).stream()
-                .map(user -> modelMapper.map(user, UserDTO.class))
+                .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Create or update a local user from Keycloak data
-     */
-    @Transactional
-    public UserDTO syncUserFromKeycloak(String keycloakId) {
-        // Check if user already exists in our database
-        Optional<User> existingUser = userRepository.findByKeycloakId(keycloakId);
+    
+    // Private helper methods
+    
+    private void updateUserFields(User user, UserDTO userDTO) {
+        if (userDTO.getUsername() != null) {
+            user.setUsername(userDTO.getUsername());
+        }
+        if (userDTO.getFirstName() != null) {
+            user.setFirstName(userDTO.getFirstName());
+        }
+        if (userDTO.getLastName() != null) {
+            user.setLastName(userDTO.getLastName());
+        }
+        if (userDTO.getEmail() != null) {
+            user.setEmail(userDTO.getEmail());
+        }
+        if (userDTO.getAvatar() != null) {
+            user.setAvatar(userDTO.getAvatar());
+        }
         
-        // Get user data from Keycloak
-        return keycloakService.getUserById(keycloakId)
-                .map(keycloakUser -> {
-                    User user;
-                    if (existingUser.isPresent()) {
-                        // Update existing user
-                        user = existingUser.get();
-                    } else {
-                        // Create new user
-                        user = new User();
-                        user.setKeycloakId(keycloakId);
-                    }
-                    
-                    // Update user data
-                    user.setUsername(keycloakUser.getUsername());
-                    user.setFirstName(keycloakUser.getFirstName());
-                    user.setLastName(keycloakUser.getLastName());
-                    user.setEmail(keycloakUser.getEmail());
-                    
-                    // Get roles from Keycloak
-                    List<String> roles = keycloakService.getUserRoles(keycloakId);
-                    user.setRoles(roles.stream().collect(Collectors.toSet()));
-                    
-                    // Generate avatar if not already set
-                    if (user.getAvatar() == null || user.getAvatar().isEmpty()) {
-                        String firstName = keycloakUser.getFirstName();
-                        String lastName = keycloakUser.getLastName();
-                        String avatar = "";
-                        
-                        if (firstName != null && !firstName.isEmpty()) {
-                            avatar += firstName.substring(0, 1).toUpperCase();
-                        }
-                        
-                        if (lastName != null && !lastName.isEmpty()) {
-                            avatar += lastName.substring(0, 1).toUpperCase();
-                        }
-                        
-                        user.setAvatar(avatar);
-                    }
-                    
-                    // Save user
-                    User savedUser = userRepository.save(user);
-                    return modelMapper.map(savedUser, UserDTO.class);
-                })
-                .orElse(null);
+        // Update roles if provided
+        if (userDTO.getRoles() != null) {
+            user.setRoles(userDTO.getRoles());
+        }
+    }
+    
+    private UserDTO mapToDTO(User user) {
+        return modelMapper.map(user, UserDTO.class);
+    }
+    
+    private User mapToEntity(UserDTO dto) {
+        return modelMapper.map(dto, User.class);
     }
 }

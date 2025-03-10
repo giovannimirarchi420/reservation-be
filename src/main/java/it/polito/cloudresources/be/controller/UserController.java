@@ -3,21 +3,20 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.UserDTO;
 import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.UserService;
-import jakarta.validation.Valid;
+import it.polito.cloudresources.be.util.ControllerUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -32,17 +31,7 @@ public class UserController {
 
     private final UserService userService;
     private final KeycloakService keycloakService;
-
-    /**
-     * Get current user's Keycloak ID from JWT token
-     */
-    private String getCurrentUserKeycloakId(Authentication authentication) {
-        if (authentication instanceof JwtAuthenticationToken) {
-            JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
-            return jwtAuth.getToken().getSubject();
-        }
-        return null;
-    }
+    private final ControllerUtils utils;
 
     /**
      * Get all users (admin only)
@@ -72,7 +61,7 @@ public class UserController {
     @GetMapping("/me")
     @Operation(summary = "Get current user", description = "Retrieves the profile of the currently authenticated user")
     public ResponseEntity<UserDTO> getCurrentUser(Authentication authentication) {
-        String keycloakId = getCurrentUserKeycloakId(authentication);
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         return userService.getUserByKeycloakId(keycloakId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -84,54 +73,18 @@ public class UserController {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Create user", description = "Creates a new user (Admin only)")
-    public ResponseEntity<Object> createUser(@Valid @RequestBody Map<String, Object> userData) {
+    public ResponseEntity<Object> createUser(@RequestBody Map<String, Object> userData) {
         try {
-            // Extract user details
-            String username = (String) userData.get("username");
-            String email = (String) userData.get("email");
-            String firstName = (String) userData.get("firstName");
-            String lastName = (String) userData.get("lastName");
-            String password = (String) userData.get("password");
-            @SuppressWarnings("unchecked")
-            List<String> roles = (List<String>) userData.get("roles");
-
-
-            // Create user in Keycloak
-            String keycloakId = keycloakService.createUser(username, email, firstName, lastName, password, roles);
-            
+            String keycloakId = createUserInKeycloak(userData);
             if (keycloakId == null) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(new ApiResponseDTO(false, "Failed to create user in Keycloak"));
+                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create user in Keycloak");
             }
             
-            // Create user in our database
-            UserDTO userDTO = new UserDTO();
-            userDTO.setUsername(username);
-            userDTO.setFirstName(firstName);
-            userDTO.setLastName(lastName);
-            userDTO.setEmail(email);
-            userDTO.setKeycloakId(keycloakId);
-            userDTO.setRoles(roles.stream().map(String::toUpperCase).collect(Collectors.toSet()));
-            
-            if (userData.containsKey("avatar")) {
-                userDTO.setAvatar((String) userData.get("avatar"));
-            } else {
-                // Create initials avatar
-                String avatar = "";
-                if (firstName != null && !firstName.isEmpty()) {
-                    avatar += firstName.substring(0, 1).toUpperCase();
-                }
-                if (lastName != null && !lastName.isEmpty()) {
-                    avatar += lastName.substring(0, 1).toUpperCase();
-                }
-                userDTO.setAvatar(avatar);
-            }
-            
+            UserDTO userDTO = buildUserDTOFromData(userData, keycloakId);
             UserDTO createdUser = userService.createUser(userDTO);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ApiResponseDTO(false, "Failed to create user: " + e.getMessage()));
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to create user: " + e.getMessage());
         }
     }
 
@@ -141,73 +94,24 @@ public class UserController {
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update user", description = "Updates an existing user (Admin only)")
-    public ResponseEntity<Object> updateUser(
-            @PathVariable Long id,
-            @Valid @RequestBody Map<String, Object> userData) {
-        
+    public ResponseEntity<Object> updateUser(@PathVariable Long id, @RequestBody Map<String, Object> userData) {
         try {
-            // Get the existing user
-            UserDTO existingUser = userService.getUserById(id).orElse(null);
-            if (existingUser == null) {
+            Optional<UserDTO> existingUserOpt = userService.getUserById(id);
+            if (existingUserOpt.isEmpty()) {
                 return ResponseEntity.notFound().build();
             }
             
-            // Update user in Keycloak
+            UserDTO existingUser = existingUserOpt.get();
             boolean keycloakUpdated = keycloakService.updateUser(existingUser.getKeycloakId(), userData);
-            
             if (!keycloakUpdated) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(new ApiResponseDTO(false, "Failed to update user in Keycloak"));
+                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update user in Keycloak");
             }
             
-            // Update user in our database
-            UserDTO userDTO = new UserDTO();
-            userDTO.setId(id);
-            userDTO.setKeycloakId(existingUser.getKeycloakId());
-            
-            if (userData.containsKey("username")) {
-                userDTO.setUsername((String) userData.get("username"));
-            } else {
-                userDTO.setUsername(existingUser.getUsername());
-            }
-            
-            if (userData.containsKey("firstName")) {
-                userDTO.setFirstName((String) userData.get("firstName"));
-            } else {
-                userDTO.setFirstName(existingUser.getFirstName());
-            }
-            
-            if (userData.containsKey("lastName")) {
-                userDTO.setLastName((String) userData.get("lastName"));
-            } else {
-                userDTO.setLastName(existingUser.getLastName());
-            }
-            
-            if (userData.containsKey("email")) {
-                userDTO.setEmail((String) userData.get("email"));
-            } else {
-                userDTO.setEmail(existingUser.getEmail());
-            }
-            
-            if (userData.containsKey("avatar")) {
-                userDTO.setAvatar((String) userData.get("avatar"));
-            } else {
-                userDTO.setAvatar(existingUser.getAvatar());
-            }
-            
-            if (userData.containsKey("roles")) {
-                @SuppressWarnings("unchecked")
-                List<String> roles = (List<String>) userData.get("roles");
-                userDTO.setRoles(roles.stream().map(String::toUpperCase).collect(Collectors.toSet()));
-            } else {
-                userDTO.setRoles(existingUser.getRoles());
-            }
-            
+            UserDTO userDTO = buildUserDTOForUpdate(id, userData, existingUser);
             UserDTO updatedUser = userService.updateUser(id, userDTO);
             return ResponseEntity.ok(updatedUser);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ApiResponseDTO(false, "Failed to update user: " + e.getMessage()));
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update user: " + e.getMessage());
         }
     }
     
@@ -217,88 +121,27 @@ public class UserController {
     @PutMapping("/me")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Update profile", description = "Updates the current user's profile")
-    public ResponseEntity<Object> updateProfile(
-            @Valid @RequestBody Map<String, Object> userData,
-            Authentication authentication) {
-        
+    public ResponseEntity<Object> updateProfile(@RequestBody Map<String, Object> userData, Authentication authentication) {
         try {
-            String keycloakId = getCurrentUserKeycloakId(authentication);
-            UserDTO existingUser = userService.getUserByKeycloakId(keycloakId).orElse(null);
+            String keycloakId = utils.getCurrentUserKeycloakId(authentication);
+            Optional<UserDTO> existingUserOpt = userService.getUserByKeycloakId(keycloakId);
             
-            if (existingUser == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(new ApiResponseDTO(false, "User not found"));
+            if (existingUserOpt.isEmpty()) {
+                return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
             }
             
-            // Restrict which fields can be updated by the user themselves
-            Map<String, Object> keycloakUpdate = new java.util.HashMap<>();
+            UserDTO existingUser = existingUserOpt.get();
+            Map<String, Object> keycloakUpdate = extractKeycloakUpdateFields(userData);
             
-            if (userData.containsKey("firstName")) {
-                keycloakUpdate.put("firstName", userData.get("firstName"));
+            if (!keycloakUpdate.isEmpty() && !keycloakService.updateUser(keycloakId, keycloakUpdate)) {
+                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update user in Keycloak");
             }
             
-            if (userData.containsKey("lastName")) {
-                keycloakUpdate.put("lastName", userData.get("lastName"));
-            }
-            
-            if (userData.containsKey("email")) {
-                keycloakUpdate.put("email", userData.get("email"));
-            }
-            
-            if (userData.containsKey("password")) {
-                keycloakUpdate.put("password", userData.get("password"));
-            }
-            
-            // Update user in Keycloak if there are changes
-            if (!keycloakUpdate.isEmpty()) {
-                boolean keycloakUpdated = keycloakService.updateUser(keycloakId, keycloakUpdate);
-                
-                if (!keycloakUpdated) {
-                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                            .body(new ApiResponseDTO(false, "Failed to update user in Keycloak"));
-                }
-            }
-            
-            // Update user in our database
-            UserDTO userDTO = new UserDTO();
-            userDTO.setId(existingUser.getId());
-            userDTO.setKeycloakId(keycloakId);
-            
-            // Username can't be changed by the user
-            userDTO.setUsername(existingUser.getUsername());
-            
-            if (userData.containsKey("firstName")) {
-                userDTO.setFirstName((String) userData.get("firstName"));
-            } else {
-                userDTO.setFirstName(existingUser.getFirstName());
-            }
-            
-            if (userData.containsKey("lastName")) {
-                userDTO.setLastName((String) userData.get("lastName"));
-            } else {
-                userDTO.setLastName(existingUser.getLastName());
-            }
-            
-            if (userData.containsKey("email")) {
-                userDTO.setEmail((String) userData.get("email"));
-            } else {
-                userDTO.setEmail(existingUser.getEmail());
-            }
-            
-            if (userData.containsKey("avatar")) {
-                userDTO.setAvatar((String) userData.get("avatar"));
-            } else {
-                userDTO.setAvatar(existingUser.getAvatar());
-            }
-            
-            // Users cannot change their own roles
-            userDTO.setRoles(existingUser.getRoles());
-            
+            UserDTO userDTO = buildUserDTOForProfileUpdate(userData, existingUser);
             UserDTO updatedUser = userService.updateUser(existingUser.getId(), userDTO);
             return ResponseEntity.ok(updatedUser);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ApiResponseDTO(false, "Failed to update profile: " + e.getMessage()));
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update profile: " + e.getMessage());
         }
     }
 
@@ -308,34 +151,29 @@ public class UserController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete user", description = "Deletes an existing user (Admin only)")
-    public ResponseEntity<ApiResponseDTO> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<Object> deleteUser(@PathVariable Long id) {
         try {
-            UserDTO user = userService.getUserById(id).orElse(null);
-            if (user == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(new ApiResponseDTO(false, "User not found"));
+            Optional<UserDTO> userOpt = userService.getUserById(id);
+            if (userOpt.isEmpty()) {
+                return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
             }
             
-            // Delete from Keycloak
-            boolean keycloakDeleted = keycloakService.deleteUser(user.getKeycloakId());
-            
-            if (!keycloakDeleted) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(new ApiResponseDTO(false, "Failed to delete user from Keycloak"));
+            UserDTO user = userOpt.get();
+            if (!keycloakService.deleteUser(user.getKeycloakId())) {
+                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, 
+                        "Failed to delete user from Keycloak");
             }
             
-            // Delete from our database
             boolean deleted = userService.deleteUser(id);
-            
-            if (deleted) {
-                return ResponseEntity.ok(new ApiResponseDTO(true, "User deleted successfully"));
-            } else {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(new ApiResponseDTO(false, "Failed to delete user from database"));
+            if (!deleted) {
+                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, 
+                        "Failed to delete user from database");
             }
+            
+            return utils.createSuccessResponse("User deleted successfully");
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ApiResponseDTO(false, "Failed to delete user: " + e.getMessage()));
+            return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, 
+                    "Failed to delete user: " + e.getMessage());
         }
     }
 
@@ -348,5 +186,118 @@ public class UserController {
     public ResponseEntity<List<UserDTO>> getUsersByRole(@PathVariable String role) {
         List<UserDTO> users = userService.getUsersByRole(role.toUpperCase());
         return ResponseEntity.ok(users);
+    }
+    
+    // Helper methods
+    
+    private String createUserInKeycloak(Map<String, Object> userData) {
+        String username = (String) userData.get("username");
+        String email = (String) userData.get("email");
+        String firstName = (String) userData.get("firstName");
+        String lastName = (String) userData.get("lastName");
+        String password = (String) userData.get("password");
+        @SuppressWarnings("unchecked")
+        List<String> roles = (List<String>) userData.get("roles");
+        
+        return keycloakService.createUser(username, email, firstName, lastName, password, roles);
+    }
+    
+    private UserDTO buildUserDTOFromData(Map<String, Object> userData, String keycloakId) {
+        UserDTO userDTO = new UserDTO();
+        userDTO.setUsername((String) userData.get("username"));
+        userDTO.setFirstName((String) userData.get("firstName"));
+        userDTO.setLastName((String) userData.get("lastName"));
+        userDTO.setEmail((String) userData.get("email"));
+        userDTO.setKeycloakId(keycloakId);
+        
+        @SuppressWarnings("unchecked")
+        List<String> roles = (List<String>) userData.get("roles");
+        userDTO.setRoles(roles.stream().map(String::toUpperCase).collect(Collectors.toSet()));
+        
+        // Set avatar
+        if (userData.containsKey("avatar")) {
+            userDTO.setAvatar((String) userData.get("avatar"));
+        } else {
+            userDTO.setAvatar(generateAvatarFromName(userDTO.getFirstName(), userDTO.getLastName()));
+        }
+        
+        return userDTO;
+    }
+    
+    private UserDTO buildUserDTOForUpdate(Long id, Map<String, Object> userData, UserDTO existingUser) {
+        UserDTO userDTO = new UserDTO();
+        userDTO.setId(id);
+        userDTO.setKeycloakId(existingUser.getKeycloakId());
+        
+        userDTO.setUsername(getStringOrDefault(userData, "username", existingUser.getUsername()));
+        userDTO.setFirstName(getStringOrDefault(userData, "firstName", existingUser.getFirstName()));
+        userDTO.setLastName(getStringOrDefault(userData, "lastName", existingUser.getLastName()));
+        userDTO.setEmail(getStringOrDefault(userData, "email", existingUser.getEmail()));
+        userDTO.setAvatar(getStringOrDefault(userData, "avatar", existingUser.getAvatar()));
+        
+        if (userData.containsKey("roles")) {
+            @SuppressWarnings("unchecked")
+            List<String> roles = (List<String>) userData.get("roles");
+            userDTO.setRoles(roles.stream().map(String::toUpperCase).collect(Collectors.toSet()));
+        } else {
+            userDTO.setRoles(existingUser.getRoles());
+        }
+        
+        return userDTO;
+    }
+    
+    private UserDTO buildUserDTOForProfileUpdate(Map<String, Object> userData, UserDTO existingUser) {
+        UserDTO userDTO = new UserDTO();
+        userDTO.setId(existingUser.getId());
+        userDTO.setKeycloakId(existingUser.getKeycloakId());
+        userDTO.setUsername(existingUser.getUsername()); // Username can't be changed by the user
+        
+        userDTO.setFirstName(getStringOrDefault(userData, "firstName", existingUser.getFirstName()));
+        userDTO.setLastName(getStringOrDefault(userData, "lastName", existingUser.getLastName()));
+        userDTO.setEmail(getStringOrDefault(userData, "email", existingUser.getEmail()));
+        userDTO.setAvatar(getStringOrDefault(userData, "avatar", existingUser.getAvatar()));
+        userDTO.setRoles(existingUser.getRoles()); // Users cannot change their own roles
+        
+        return userDTO;
+    }
+    
+    private Map<String, Object> extractKeycloakUpdateFields(Map<String, Object> userData) {
+        Map<String, Object> keycloakUpdate = new java.util.HashMap<>();
+        
+        if (userData.containsKey("firstName")) {
+            keycloakUpdate.put("firstName", userData.get("firstName"));
+        }
+        
+        if (userData.containsKey("lastName")) {
+            keycloakUpdate.put("lastName", userData.get("lastName"));
+        }
+        
+        if (userData.containsKey("email")) {
+            keycloakUpdate.put("email", userData.get("email"));
+        }
+        
+        if (userData.containsKey("password")) {
+            keycloakUpdate.put("password", userData.get("password"));
+        }
+        
+        return keycloakUpdate;
+    }
+    
+    private String generateAvatarFromName(String firstName, String lastName) {
+        StringBuilder avatar = new StringBuilder();
+        
+        if (firstName != null && !firstName.isEmpty()) {
+            avatar.append(firstName.substring(0, 1).toUpperCase());
+        }
+        
+        if (lastName != null && !lastName.isEmpty()) {
+            avatar.append(lastName.substring(0, 1).toUpperCase());
+        }
+        
+        return avatar.toString();
+    }
+    
+    private String getStringOrDefault(Map<String, Object> map, String key, String defaultValue) {
+        return map.containsKey(key) ? (String) map.get(key) : defaultValue;
     }
 }
