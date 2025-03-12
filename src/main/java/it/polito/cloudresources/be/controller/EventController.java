@@ -193,4 +193,19 @@ public class EventController {
                 !hasConflicts
         );
     }
+    
+    /**
+     * Check if a resource is available for booking
+     */
+    @GetMapping("/check-resource-availability")
+    @Operation(summary = "Check resource availability", description = "Checks if a resource is available for booking (ACTIVE state)")
+    public ResponseEntity<ApiResponseDTO> checkResourceAvailability(@RequestParam Long resourceId) {
+        boolean isAvailable = eventService.isResourceAvailableForBooking(resourceId);
+        
+        if (isAvailable) {
+            return utils.createSuccessResponse("Resource is available for booking", true);
+        } else {
+            return utils.createSuccessResponse("Resource is not available for booking. Only resources in ACTIVE state can be booked", false);
+        }
+    }
 }

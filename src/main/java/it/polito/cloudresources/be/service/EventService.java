@@ -4,6 +4,7 @@ import it.polito.cloudresources.be.config.DateTimeConfig;
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
+import it.polito.cloudresources.be.model.ResourceStatus;
 import it.polito.cloudresources.be.model.User;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
@@ -123,6 +124,14 @@ public class EventService {
             throw new IllegalStateException("The selected time period conflicts with existing bookings");
         }
         
+        // Check if the resource is in ACTIVE state
+        Resource resource = resourceRepository.findById(eventDTO.getResourceId())
+                .orElseThrow(() -> new EntityNotFoundException("Resource not found with ID: " + eventDTO.getResourceId()));
+        
+        if (resource.getStatus() != ResourceStatus.ACTIVE) {
+            throw new IllegalStateException("Cannot book a resource that is not in ACTIVE state. Current state: " + resource.getStatus());
+        }
+        
         Event event = convertToEntity(eventDTO);
         Event savedEvent = eventRepository.save(event);
         
@@ -174,11 +183,8 @@ public class EventService {
                     }
                     
                     // Check for time conflicts (excluding this event)
-                    if (hasTimeConflict(
-                            eventDTO.getResourceId() != null ? eventDTO.getResourceId() : existingEvent.getResource().getId(),
-                            existingEvent.getStart(),
-                            existingEvent.getEnd(),
-                            id)) {
+                    Long resourceId = eventDTO.getResourceId() != null ? eventDTO.getResourceId() : existingEvent.getResource().getId();
+                    if (hasTimeConflict(resourceId, existingEvent.getStart(), existingEvent.getEnd(), id)) {
                         throw new IllegalStateException("The selected time period conflicts with existing bookings");
                     }
                     
@@ -186,7 +192,18 @@ public class EventService {
                     if (eventDTO.getResourceId() != null && !existingEvent.getResource().getId().equals(eventDTO.getResourceId())) {
                         Resource newResource = resourceRepository.findById(eventDTO.getResourceId())
                                 .orElseThrow(() -> new EntityNotFoundException("Resource not found"));
+                        
+                        // Check if the new resource is in ACTIVE state
+                        if (newResource.getStatus() != ResourceStatus.ACTIVE) {
+                            throw new IllegalStateException("Cannot book a resource that is not in ACTIVE state. Current state: " + newResource.getStatus());
+                        }
+                        
                         existingEvent.setResource(newResource);
+                    } else {
+                        // Also check if the existing resource is still ACTIVE
+                        if (existingEvent.getResource().getStatus() != ResourceStatus.ACTIVE) {
+                            throw new IllegalStateException("Cannot update booking for a resource that is not in ACTIVE state. Current state: " + existingEvent.getResource().getStatus());
+                        }
                     }
                     
                     // Update user if changed (and provided)
@@ -224,6 +241,15 @@ public class EventService {
         
         List<Event> conflictingEvents = eventRepository.findConflictingEvents(resourceId, normalizedStart, normalizedEnd, eventId);
         return !conflictingEvents.isEmpty();
+    }
+    
+    /**
+     * Check if a resource is available for booking (is in ACTIVE state)
+     */
+    public boolean isResourceAvailableForBooking(Long resourceId) {
+        return resourceRepository.findById(resourceId)
+                .map(resource -> resource.getStatus() == ResourceStatus.ACTIVE)
+                .orElse(false);
     }
 
     /**
