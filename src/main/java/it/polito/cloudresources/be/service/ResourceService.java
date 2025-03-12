@@ -1,19 +1,26 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.ResourceDTO;
+import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
 import it.polito.cloudresources.be.model.ResourceType;
+import it.polito.cloudresources.be.model.User;
+import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.ZonedDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -21,11 +28,15 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ResourceService {
 
     private final ResourceRepository resourceRepository;
     private final ResourceTypeRepository resourceTypeRepository;
+    private final EventRepository eventRepository;
+    private final NotificationService notificationService;
     private final ModelMapper modelMapper;
+    private final AuditLogService auditLogService;
 
     /**
      * Get all resources
@@ -69,6 +80,16 @@ public class ResourceService {
     public ResourceDTO createResource(ResourceDTO resourceDTO) {
         Resource resource = convertToEntity(resourceDTO);
         Resource savedResource = resourceRepository.save(resource);
+        
+        // Log the action
+        auditLogService.logAdminAction("Resource", "create", "Created resource: " + savedResource.getName());
+        
+        // Notify admins about new resource
+        notificationService.createSystemNotification(
+            "New resource created", 
+            "Resource " + savedResource.getName() + " has been added to the system"
+        );
+        
         return convertToDTO(savedResource);
     }
 
@@ -79,6 +100,9 @@ public class ResourceService {
     public Optional<ResourceDTO> updateResource(Long id, ResourceDTO resourceDTO) {
         return resourceRepository.findById(id)
                 .map(existingResource -> {
+                    // Store old status for comparison
+                    ResourceStatus oldStatus = existingResource.getStatus();
+                    
                     // Update fields
                     existingResource.setName(resourceDTO.getName());
                     existingResource.setSpecs(resourceDTO.getSpecs());
@@ -92,7 +116,19 @@ public class ResourceService {
                         existingResource.setType(newType);
                     }
                     
-                    return convertToDTO(resourceRepository.save(existingResource));
+                    Resource updatedResource = resourceRepository.save(existingResource);
+                    
+                    // Log the action
+                    auditLogService.logAdminAction("Resource", "update", 
+                            "Updated resource: " + updatedResource.getName());
+                    
+                    // Check if status has changed
+                    if (oldStatus != updatedResource.getStatus()) {
+                        // Handle status change notifications
+                        handleResourceStatusChange(updatedResource, oldStatus);
+                    }
+                    
+                    return convertToDTO(updatedResource);
                 });
     }
 
@@ -103,9 +139,106 @@ public class ResourceService {
     public Optional<ResourceDTO> updateResourceStatus(Long id, ResourceStatus status) {
         return resourceRepository.findById(id)
                 .map(existingResource -> {
+                    ResourceStatus oldStatus = existingResource.getStatus();
                     existingResource.setStatus(status);
-                    return convertToDTO(resourceRepository.save(existingResource));
+                    Resource updatedResource = resourceRepository.save(existingResource);
+                    
+                    // Log the action
+                    auditLogService.logAdminAction("Resource", "updateStatus", 
+                            "Updated resource status: " + updatedResource.getName() + 
+                            " from " + oldStatus + " to " + status);
+                    
+                    // Handle status change notifications
+                    handleResourceStatusChange(updatedResource, oldStatus);
+                    
+                    return convertToDTO(updatedResource);
                 });
+    }
+
+    /**
+     * Handle resource status change notifications
+     */
+    private void handleResourceStatusChange(Resource resource, ResourceStatus oldStatus) {
+        ResourceStatus newStatus = resource.getStatus();
+        
+        // Skip if status didn't actually change
+        if (oldStatus == newStatus) {
+            return;
+        }
+        
+        // Notify admins about the status change
+        notificationService.createSystemNotification(
+            "Resource status changed", 
+            "Resource " + resource.getName() + " status changed from " + oldStatus + " to " + newStatus
+        );
+        
+        // If resource is no longer active, notify users with upcoming bookings
+        if (oldStatus == ResourceStatus.ACTIVE && 
+            (newStatus == ResourceStatus.MAINTENANCE || newStatus == ResourceStatus.UNAVAILABLE)) {
+            
+            // Find all future bookings for this resource
+            ZonedDateTime now = ZonedDateTime.now();
+            List<Event> futureEvents = eventRepository.findByResourceId(resource.getId()).stream()
+                    .filter(event -> event.getEnd().isAfter(now))
+                    .collect(Collectors.toList());
+            
+            if (!futureEvents.isEmpty()) {
+                // Create a set to avoid duplicate notifications to the same user
+                Set<User> usersToNotify = new HashSet<>();
+                
+                // Collect all unique users with future bookings
+                for (Event event : futureEvents) {
+                    usersToNotify.add(event.getUser());
+                }
+                
+                // Send notification to each affected user
+                for (User user : usersToNotify) {
+                    notificationService.createNotification(
+                        user.getId(),
+                        "Resource unavailable: " + resource.getName() + " is now " + newStatus.toString().toLowerCase(),
+                        "WARNING"
+                    );
+                }
+                
+                // Log the notifications
+                log.info("Sent notifications to {} users about resource status change for {}", 
+                        usersToNotify.size(), resource.getName());
+            }
+        }
+        
+        // If resource becomes active again, notify users who had bookings during maintenance
+        if ((oldStatus == ResourceStatus.MAINTENANCE || oldStatus == ResourceStatus.UNAVAILABLE) && 
+             newStatus == ResourceStatus.ACTIVE) {
+            
+            // Find all users with upcoming bookings for this resource
+            ZonedDateTime now = ZonedDateTime.now();
+            List<Event> futureEvents = eventRepository.findByResourceId(resource.getId()).stream()
+                    .filter(event -> event.getEnd().isAfter(now))
+                    .collect(Collectors.toList());
+            
+            // Create a set to avoid duplicate notifications to the same user
+            Set<User> usersToNotify = new HashSet<>();
+            
+            // Collect all unique users with future bookings
+            for (Event event : futureEvents) {
+                usersToNotify.add(event.getUser());
+            }
+            
+            // Send notification to each affected user
+            for (User user : usersToNotify) {
+                notificationService.createNotification(
+                    user.getId(),
+                    "Resource available: " + resource.getName() + " is now active",
+                    "SUCCESS"
+                );
+            }
+            
+            if (!usersToNotify.isEmpty()) {
+                // Log the notifications
+                log.info("Sent notifications to {} users about resource becoming active again: {}", 
+                        usersToNotify.size(), resource.getName());
+            }
+        }
     }
 
     /**
@@ -113,8 +246,47 @@ public class ResourceService {
      */
     @Transactional
     public boolean deleteResource(Long id) {
-        if (resourceRepository.existsById(id)) {
+        Optional<Resource> resourceOpt = resourceRepository.findById(id);
+        if (resourceOpt.isPresent()) {
+            Resource resource = resourceOpt.get();
+            
+            // Check if resource has future bookings
+            ZonedDateTime now = ZonedDateTime.now();
+            List<Event> futureEvents = eventRepository.findByResourceId(id).stream()
+                    .filter(event -> event.getEnd().isAfter(now))
+                    .collect(Collectors.toList());
+            
+            // Notify users with future bookings
+            if (!futureEvents.isEmpty()) {
+                Set<User> usersToNotify = new HashSet<>();
+                
+                // Collect all unique users with future bookings
+                for (Event event : futureEvents) {
+                    usersToNotify.add(event.getUser());
+                }
+                
+                // Send notification to each affected user
+                for (User user : usersToNotify) {
+                    notificationService.createNotification(
+                        user.getId(),
+                        "Booking cancelled: Resource " + resource.getName() + " has been removed",
+                        "ERROR"
+                    );
+                }
+            }
+            
+            // Log the action
+            auditLogService.logAdminAction("Resource", "delete", "Deleted resource: " + resource.getName());
+            
+            // Delete the resource
             resourceRepository.deleteById(id);
+            
+            // Notify admins about deletion
+            notificationService.createSystemNotification(
+                "Resource deleted", 
+                "Resource " + resource.getName() + " has been deleted from the system"
+            );
+            
             return true;
         }
         return false;
