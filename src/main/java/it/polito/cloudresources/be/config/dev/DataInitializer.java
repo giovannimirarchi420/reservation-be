@@ -1,5 +1,6 @@
-package it.polito.cloudresources.be.config;
+package it.polito.cloudresources.be.config.dev;
 
+import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
 import it.polito.cloudresources.be.model.*;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;

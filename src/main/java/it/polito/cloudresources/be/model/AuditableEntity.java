@@ -1,6 +1,5 @@
 package it.polito.cloudresources.be.model;
 
-import it.polito.cloudresources.be.config.DateTimeConfig;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
 import jakarta.persistence.PrePersist;
@@ -10,6 +9,8 @@ import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
 
 import java.time.ZonedDateTime;
 

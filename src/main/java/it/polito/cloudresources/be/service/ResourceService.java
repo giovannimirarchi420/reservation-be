@@ -8,7 +8,6 @@ import it.polito.cloudresources.be.model.ResourceStatus;
 import it.polito.cloudresources.be.model.User;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
-import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import it.polito.cloudresources.be.util.DateTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +30,6 @@ import java.util.stream.Collectors;
 public class ResourceService {
 
     private final ResourceRepository resourceRepository;
-    private final ResourceTypeRepository resourceTypeRepository;
     private final EventRepository eventRepository;
     private final NotificationService notificationService;
     private final AuditLogService auditLogService;

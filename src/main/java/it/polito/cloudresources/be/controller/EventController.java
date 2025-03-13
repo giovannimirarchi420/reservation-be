@@ -3,7 +3,7 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import it.polito.cloudresources.be.config.DateTimeConfig;
+import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.service.EventService;

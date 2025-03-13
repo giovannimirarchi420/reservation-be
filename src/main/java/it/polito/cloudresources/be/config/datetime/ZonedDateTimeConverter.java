@@ -1,4 +1,4 @@
-package it.polito.cloudresources.be.config;
+package it.polito.cloudresources.be.config.datetime;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
@@ -8,8 +8,8 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
 /**
- * JPA converter to store ZonedDateTime as UTC timestamp in the database
- * and convert it back to ZonedDateTime with the original timezone
+ * Convertitore JPA per memorizzare ZonedDateTime come timestamp UTC nel database
+ * e convertirlo nuovamente in ZonedDateTime con il fuso orario originale
  */
 @Converter(autoApply = true)
 public class ZonedDateTimeConverter implements AttributeConverter<ZonedDateTime, Timestamp> {
@@ -19,7 +19,7 @@ public class ZonedDateTimeConverter implements AttributeConverter<ZonedDateTime,
         if (zonedDateTime == null) {
             return null;
         }
-        // Store in UTC time zone
+        // Memorizza nel fuso orario UTC
         return Timestamp.valueOf(zonedDateTime.withZoneSameInstant(ZoneId.of("UTC")).toLocalDateTime());
     }
 
@@ -28,7 +28,7 @@ public class ZonedDateTimeConverter implements AttributeConverter<ZonedDateTime,
         if (timestamp == null) {
             return null;
         }
-        // Retrieve as UTC, then convert to application default time zone
+        // Recupera come UTC, poi converte nel fuso orario predefinito dell'applicazione
         return ZonedDateTime.of(timestamp.toLocalDateTime(), ZoneId.of("UTC"))
                 .withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
     }

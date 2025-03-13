@@ -1,6 +1,5 @@
 package it.polito.cloudresources.be.model;
 
-import it.polito.cloudresources.be.config.DateTimeConfig;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -11,6 +10,8 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.time.ZonedDateTime;
+
+import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
 
 /**
  * Event entity representing resource bookings
