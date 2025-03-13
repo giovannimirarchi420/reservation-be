@@ -13,8 +13,8 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Configurazione centralizzata per la gestione di date e orari nell'applicazione.
- * Questa classe sostituisce DateTimeConfig e include le funzionalità di DateTimeUtils
+ * Centralized configuration for managing dates and times in the application.
+ * This class replaces DateTimeConfig and includes the functionalities of DateTimeUtils.
  */
 @Configuration
 public class DateTimeConfig {
@@ -23,7 +23,7 @@ public class DateTimeConfig {
     public static final DateTimeFormatter ISO_DATE_TIME_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
     /**
-     * Configura Jackson ObjectMapper con gestione appropriata di date e orari
+     * Configures Jackson ObjectMapper with appropriate date and time handling.
      */
     @Bean
     @Primary
@@ -35,9 +35,9 @@ public class DateTimeConfig {
     }
     
     /**
-     * Ottiene la data e ora corrente nel fuso orario predefinito dell'applicazione
+     * Gets the current date and time in the application's default time zone.
      *
-     * @return data e ora corrente
+     * @return current date and time
      */
     @Bean
     public DateTimeService dateTimeService() {
@@ -45,23 +45,23 @@ public class DateTimeConfig {
     }
     
     /**
-     * Servizio per operazioni standardizzate su date e orari
+     * Service for standardized date and time operations.
      */
     public static class DateTimeService {
         /**
-         * Ottiene la data e ora corrente nel fuso orario predefinito dell'applicazione
+         * Gets the current date and time in the application's default time zone.
          *
-         * @return data e ora corrente
+         * @return current date and time
          */
         public ZonedDateTime getCurrentDateTime() {
             return ZonedDateTime.now(DEFAULT_ZONE_ID);
         }
         
         /**
-         * Assicura che una data abbia informazioni sul fuso orario, applicando il predefinito se mancante
+         * Ensures that a date has time zone information, applying the default if missing.
          *
-         * @param dateTime la data da verificare
-         * @return la data con informazioni sul fuso orario
+         * @param dateTime the date to verify
+         * @return the date with time zone information
          */
         public ZonedDateTime ensureTimeZone(ZonedDateTime dateTime) {
             if (dateTime == null) {
@@ -72,10 +72,10 @@ public class DateTimeConfig {
         }
         
         /**
-         * Formatta una data utilizzando il formattatore ISO
+         * Formats a date using the ISO formatter.
          *
-         * @param dateTime la data da formattare
-         * @return la stringa formattata della data
+         * @param dateTime the date to format
+         * @return the formatted date string
          */
         public String formatDateTime(ZonedDateTime dateTime) {
             if (dateTime == null) {
@@ -85,10 +85,10 @@ public class DateTimeConfig {
         }
         
         /**
-         * Analizza una stringa in una data utilizzando il formattatore ISO
+         * Parses a string into a date using the ISO formatter.
          *
-         * @param dateTimeString la stringa della data da analizzare
-         * @return la data analizzata
+         * @param dateTimeString the date string to parse
+         * @return the parsed date
          */
         public ZonedDateTime parseDateTime(String dateTimeString) {
             if (dateTimeString == null || dateTimeString.isEmpty()) {

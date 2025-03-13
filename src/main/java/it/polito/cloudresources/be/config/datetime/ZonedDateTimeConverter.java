@@ -8,8 +8,8 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
 /**
- * Convertitore JPA per memorizzare ZonedDateTime come timestamp UTC nel database
- * e convertirlo nuovamente in ZonedDateTime con il fuso orario originale
+ * JPA converter to store ZonedDateTime as a UTC timestamp in the database
+ * and convert it back to ZonedDateTime with the original time zone.
  */
 @Converter(autoApply = true)
 public class ZonedDateTimeConverter implements AttributeConverter<ZonedDateTime, Timestamp> {
@@ -19,7 +19,7 @@ public class ZonedDateTimeConverter implements AttributeConverter<ZonedDateTime,
         if (zonedDateTime == null) {
             return null;
         }
-        // Memorizza nel fuso orario UTC
+        // Store in UTC time zone
         return Timestamp.valueOf(zonedDateTime.withZoneSameInstant(ZoneId.of("UTC")).toLocalDateTime());
     }
 
@@ -28,7 +28,7 @@ public class ZonedDateTimeConverter implements AttributeConverter<ZonedDateTime,
         if (timestamp == null) {
             return null;
         }
-        // Recupera come UTC, poi converte nel fuso orario predefinito dell'applicazione
+        // Retrieve as UTC, then convert to the application's default time zone
         return ZonedDateTime.of(timestamp.toLocalDateTime(), ZoneId.of("UTC"))
                 .withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
     }

@@ -159,15 +159,12 @@ public class ResourceService {
                 Set<User> usersToNotify = new HashSet<>();
                 
                 // Collect all unique users with future bookings
-                for (Event event : futureEvents) {
-                    usersToNotify.add(event.getUser());
-                }
-
                 // Delete all future bookings
                 for (Event event : futureEvents) {
+                    usersToNotify.add(event.getUser());
                     eventRepository.delete(event);
                 }
-                
+
                 // Send notification to each affected user
                 for (User user : usersToNotify) {
                     notificationService.createNotification(
