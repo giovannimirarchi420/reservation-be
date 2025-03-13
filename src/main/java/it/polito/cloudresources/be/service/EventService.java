@@ -1,14 +1,13 @@
 package it.polito.cloudresources.be.service;
 
-import it.polito.cloudresources.be.config.DateTimeConfig;
 import it.polito.cloudresources.be.dto.EventDTO;
+import it.polito.cloudresources.be.mapper.EventMapper;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
-import it.polito.cloudresources.be.model.User;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
-import it.polito.cloudresources.be.repository.UserRepository;
+import it.polito.cloudresources.be.util.DateTimeUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,10 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
- * Service for event operations with proper time zone handling
+ * Service for event operations with consistent time zone handling
  */
 @Service
 @RequiredArgsConstructor
@@ -30,16 +28,15 @@ public class EventService {
 
     private final EventRepository eventRepository;
     private final ResourceRepository resourceRepository;
-    private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final EventMapper eventMapper;
+    private final DateTimeUtils dateTimeUtils;
 
     /**
      * Get all events
      */
     public List<EventDTO> getAllEvents() {
-        return eventRepository.findAll().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return eventMapper.toDto(eventRepository.findAll());
     }
 
     /**
@@ -47,35 +44,28 @@ public class EventService {
      */
     public Optional<EventDTO> getEventById(Long id) {
         return eventRepository.findById(id)
-                .map(this::convertToDTO);
+                .map(eventMapper::toDto);
     }
 
     /**
      * Get events by resource
      */
     public List<EventDTO> getEventsByResource(Long resourceId) {
-        return eventRepository.findByResourceId(resourceId).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return eventMapper.toDto(eventRepository.findByResourceId(resourceId));
     }
 
     /**
      * Get events by user
      */
     public List<EventDTO> getEventsByUser(Long userId) {
-        return eventRepository.findByUserId(userId).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return eventMapper.toDto(eventRepository.findByUserId(userId));
     }
 
     /**
      * Get events by user's Keycloak ID
      */
     public List<EventDTO> getEventsByUserKeycloakId(String keycloakId) {
-        // Ora usiamo la query ottimizzata del repository
-        return eventRepository.findByUserKeycloakId(keycloakId).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return eventMapper.toDto(eventRepository.findByUserKeycloakId(keycloakId));
     }
 
     /**
@@ -83,12 +73,12 @@ public class EventService {
      */
     public List<EventDTO> getEventsByDateRange(ZonedDateTime startDate, ZonedDateTime endDate) {
         // Make sure both dates have time zone info
-        ZonedDateTime normalizedStartDate = ensureTimeZone(startDate);
-        ZonedDateTime normalizedEndDate = ensureTimeZone(endDate);
+        ZonedDateTime normalizedStartDate = dateTimeUtils.ensureTimeZone(startDate);
+        ZonedDateTime normalizedEndDate = dateTimeUtils.ensureTimeZone(endDate);
         
-        return eventRepository.findByDateRange(normalizedStartDate, normalizedEndDate).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return eventMapper.toDto(
+            eventRepository.findByDateRange(normalizedStartDate, normalizedEndDate)
+        );
     }
 
     /**
@@ -100,18 +90,18 @@ public class EventService {
         
         // Set current time if not provided by frontend
         if (eventDTO.getStart() == null) {
-            eventDTO.setStart(ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID));
+            eventDTO.setStart(dateTimeUtils.getCurrentDateTime());
         } else {
             // Ensure time zone info for start
-            eventDTO.setStart(ensureTimeZone(eventDTO.getStart()));
+            eventDTO.setStart(dateTimeUtils.ensureTimeZone(eventDTO.getStart()));
         }
         
         if (eventDTO.getEnd() == null) {
             // Default to 1 hour later if end time not provided
-            eventDTO.setEnd(ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID).plusHours(1));
+            eventDTO.setEnd(dateTimeUtils.getCurrentDateTime().plusHours(1));
         } else {
             // Ensure time zone info for end
-            eventDTO.setEnd(ensureTimeZone(eventDTO.getEnd()));
+            eventDTO.setEnd(dateTimeUtils.ensureTimeZone(eventDTO.getEnd()));
         }
         
         // Validate time period
@@ -132,18 +122,19 @@ public class EventService {
             throw new IllegalStateException("Cannot book a resource that is not in ACTIVE state. Current state: " + resource.getStatus());
         }
         
-        Event event = convertToEntity(eventDTO);
+        Event event = eventMapper.toEntity(eventDTO);
         Event savedEvent = eventRepository.save(event);
         
         log.debug("Saved event: {}", savedEvent);
         
         // Send notification to resource admin
         notificationService.createSystemNotification(
-                "New booking created for " + event.getResource().getName() + " by " + event.getUser().getFullName(),
-                "New booking from " + eventDTO.getStart() + " to " + eventDTO.getEnd()
+                "New booking created for " + resource.getName() + " by " + event.getUser().getFullName(),
+                "New booking from " + dateTimeUtils.formatDateTime(eventDTO.getStart()) + 
+                " to " + dateTimeUtils.formatDateTime(eventDTO.getEnd())
         );
         
-        return convertToDTO(savedEvent);
+        return eventMapper.toDto(savedEvent);
     }
 
     /**
@@ -155,18 +146,23 @@ public class EventService {
         
         // Ensure time zone info for start and end times if provided
         if (eventDTO.getStart() != null) {
-            eventDTO.setStart(ensureTimeZone(eventDTO.getStart()));
+            eventDTO.setStart(dateTimeUtils.ensureTimeZone(eventDTO.getStart()));
         }
         
         if (eventDTO.getEnd() != null) {
-            eventDTO.setEnd(ensureTimeZone(eventDTO.getEnd()));
+            eventDTO.setEnd(dateTimeUtils.ensureTimeZone(eventDTO.getEnd()));
         }
         
         return eventRepository.findById(id)
                 .map(existingEvent -> {
                     // Update fields
-                    existingEvent.setTitle(eventDTO.getTitle());
-                    existingEvent.setDescription(eventDTO.getDescription());
+                    if (eventDTO.getTitle() != null) {
+                        existingEvent.setTitle(eventDTO.getTitle());
+                    }
+                    
+                    if (eventDTO.getDescription() != null) {
+                        existingEvent.setDescription(eventDTO.getDescription());
+                    }
                     
                     // Only update start and end if provided
                     if (eventDTO.getStart() != null) {
@@ -206,16 +202,11 @@ public class EventService {
                         }
                     }
                     
-                    // Update user if changed (and provided)
-                    if (eventDTO.getUserId() != null && !existingEvent.getUser().getKeycloakId().equals(eventDTO.getUserId())) {
-                        User newUser = userRepository.findByKeycloakId(eventDTO.getUserId())
-                                .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + eventDTO.getUserId()));
-                        existingEvent.setUser(newUser);
-                    }
-                    
+                    // For complex objects like this, it's better to use selective updates rather than
+                    // the full entity mapping from the DTO, because we need to preserve some relationships
                     Event updatedEvent = eventRepository.save(existingEvent);
                     log.debug("Updated event: {}", updatedEvent);
-                    return convertToDTO(updatedEvent);
+                    return eventMapper.toDto(updatedEvent);
                 });
     }
 
@@ -236,8 +227,8 @@ public class EventService {
      */
     public boolean hasTimeConflict(Long resourceId, ZonedDateTime start, ZonedDateTime end, Long eventId) {
         // Ensure dates have time zone info
-        ZonedDateTime normalizedStart = ensureTimeZone(start);
-        ZonedDateTime normalizedEnd = ensureTimeZone(end);
+        ZonedDateTime normalizedStart = dateTimeUtils.ensureTimeZone(start);
+        ZonedDateTime normalizedEnd = dateTimeUtils.ensureTimeZone(end);
         
         List<Event> conflictingEvents = eventRepository.findConflictingEvents(resourceId, normalizedStart, normalizedEnd, eventId);
         return !conflictingEvents.isEmpty();
@@ -250,70 +241,5 @@ public class EventService {
         return resourceRepository.findById(resourceId)
                 .map(resource -> resource.getStatus() == ResourceStatus.ACTIVE)
                 .orElse(false);
-    }
-
-    /**
-     * Ensure a date has time zone info, applying the default if missing
-     */
-    private ZonedDateTime ensureTimeZone(ZonedDateTime dateTime) {
-        if (dateTime == null) {
-            return ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
-        }
-        
-        // A ZonedDateTime always has a zone, so we just normalize to the application's default time zone
-        return dateTime.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
-    }
-
-    /**
-     * Convert entity to DTO
-     * Modificato per evitare l'ambiguità di ModelMapper usando conversione manuale
-     */
-    private EventDTO convertToDTO(Event event) {
-        // Non usiamo ModelMapper per evitare l'ambiguità
-        EventDTO dto = new EventDTO();
-        
-        // Copiamo manualmente i campi
-        dto.setId(event.getId());
-        dto.setTitle(event.getTitle());
-        dto.setDescription(event.getDescription());
-        dto.setStart(event.getStart());
-        dto.setEnd(event.getEnd());
-        
-        // Copiamo i campi delle relazioni
-        dto.setResourceId(event.getResource().getId());
-        dto.setResourceName(event.getResource().getName());
-        dto.setUserId(event.getUser().getKeycloakId());
-        
-        // Qui usiamo esplicitamente getFullName() per evitare ambiguità
-        dto.setUserName(event.getUser().getUsername());
-        
-        return dto;
-    }
-
-    /**
-     * Convert DTO to entity
-     */
-    private Event convertToEntity(EventDTO dto) {
-        Event event = new Event();
-        
-        // Copiamo i campi semplici
-        event.setId(dto.getId());
-        event.setTitle(dto.getTitle());
-        event.setDescription(dto.getDescription());
-        event.setStart(dto.getStart());
-        event.setEnd(dto.getEnd());
-        
-        // Set the resource
-        Resource resource = resourceRepository.findById(dto.getResourceId())
-                .orElseThrow(() -> new EntityNotFoundException("Resource not found with ID: " + dto.getResourceId()));
-        event.setResource(resource);
-        
-        // Set the user by Keycloak ID
-        log.debug("Looking for user with Keycloak ID: {}", dto.getUserId());
-        User user = userRepository.findByKeycloakId(dto.getUserId())
-                .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + dto.getUserId()));
-        event.setUser(user);
-        
-        return event;
     }
 }
