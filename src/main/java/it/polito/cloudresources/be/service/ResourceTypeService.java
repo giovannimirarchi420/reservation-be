@@ -1,17 +1,16 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.ResourceTypeDTO;
+import it.polito.cloudresources.be.mapper.ResourceTypeMapper;
 import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import lombok.RequiredArgsConstructor;
-import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Service for resource type operations
@@ -22,15 +21,14 @@ public class ResourceTypeService {
 
     private final ResourceTypeRepository resourceTypeRepository;
     private final ResourceRepository resourceRepository;
-    private final ModelMapper modelMapper;
+    private final ResourceTypeMapper resourceTypeMapper;
+    private final AuditLogService auditLogService;
 
     /**
      * Get all resource types
      */
     public List<ResourceTypeDTO> getAllResourceTypes() {
-        return resourceTypeRepository.findAll().stream()
-                .map(type -> modelMapper.map(type, ResourceTypeDTO.class))
-                .collect(Collectors.toList());
+        return resourceTypeMapper.toDto(resourceTypeRepository.findAll());
     }
 
     /**
@@ -38,7 +36,7 @@ public class ResourceTypeService {
      */
     public Optional<ResourceTypeDTO> getResourceTypeById(Long id) {
         return resourceTypeRepository.findById(id)
-                .map(type -> modelMapper.map(type, ResourceTypeDTO.class));
+                .map(resourceTypeMapper::toDto);
     }
 
     /**
@@ -46,9 +44,14 @@ public class ResourceTypeService {
      */
     @Transactional
     public ResourceTypeDTO createResourceType(ResourceTypeDTO resourceTypeDTO) {
-        ResourceType resourceType = modelMapper.map(resourceTypeDTO, ResourceType.class);
+        ResourceType resourceType = resourceTypeMapper.toEntity(resourceTypeDTO);
         ResourceType savedType = resourceTypeRepository.save(resourceType);
-        return modelMapper.map(savedType, ResourceTypeDTO.class);
+        
+        // Log the action
+        auditLogService.logAdminAction("ResourceType", "create", 
+                "Created resource type: " + savedType.getName());
+                
+        return resourceTypeMapper.toDto(savedType);
     }
 
     /**
@@ -58,9 +61,18 @@ public class ResourceTypeService {
     public Optional<ResourceTypeDTO> updateResourceType(Long id, ResourceTypeDTO resourceTypeDTO) {
         return resourceTypeRepository.findById(id)
                 .map(existingType -> {
+                    // Apply updates from DTO to entity
                     existingType.setName(resourceTypeDTO.getName());
                     existingType.setColor(resourceTypeDTO.getColor());
-                    return modelMapper.map(resourceTypeRepository.save(existingType), ResourceTypeDTO.class);
+                    
+                    // Save updated entity
+                    ResourceType updatedType = resourceTypeRepository.save(existingType);
+                    
+                    // Log the action
+                    auditLogService.logAdminAction("ResourceType", "update", 
+                            "Updated resource type: " + updatedType.getName());
+                    
+                    return resourceTypeMapper.toDto(updatedType);
                 });
     }
 
@@ -80,8 +92,18 @@ public class ResourceTypeService {
             return false;
         }
         
+        // Get type name for logging before deletion
+        String typeName = resourceTypeRepository.findById(id)
+                .map(ResourceType::getName)
+                .orElse("Unknown");
+        
         // Delete the resource type
         resourceTypeRepository.deleteById(id);
+        
+        // Log the action
+        auditLogService.logAdminAction("ResourceType", "delete", 
+                "Deleted resource type: " + typeName);
+        
         return true;
     }
 

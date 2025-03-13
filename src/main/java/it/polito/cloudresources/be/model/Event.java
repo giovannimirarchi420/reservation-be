@@ -7,10 +7,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.ZonedDateTime;
 
@@ -22,8 +20,8 @@ import java.time.ZonedDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@EntityListeners(AuditingEntityListener.class)
-public class Event {
+@EqualsAndHashCode(callSuper = true)
+public class Event extends AuditableEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -50,24 +48,15 @@ public class Event {
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
-
-    @CreatedDate
-    private ZonedDateTime createdAt;
-
-    @LastModifiedDate
-    private ZonedDateTime updatedAt;
     
     /**
-     * Pre-persist hook to set default time zone if none provided
+     * Pre-persist hook to ensure start and end dates have correct timezone
      */
     @PrePersist
+    @Override
     public void prePersist() {
-        if (createdAt == null) {
-            createdAt = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
-        }
-        if (updatedAt == null) {
-            updatedAt = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
-        }
+        // Call the parent class method first
+        super.prePersist();
         
         // Ensure start and end dates have the application's default time zone
         if (start != null) {
@@ -79,11 +68,13 @@ public class Event {
     }
     
     /**
-     * Pre-update hook to set update time
+     * Pre-update hook to ensure start and end dates have correct timezone
      */
     @PreUpdate
+    @Override
     public void preUpdate() {
-        updatedAt = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
+        // Call the parent class method first
+        super.preUpdate();
         
         // Ensure start and end dates have the application's default time zone
         if (start != null) {

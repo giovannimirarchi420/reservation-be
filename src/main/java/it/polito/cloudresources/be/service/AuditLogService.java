@@ -7,21 +7,27 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 /**
- * Service for audit logging of application events
- * TODO: Implement DB Audit logs
+ * Enhanced service for audit logging of application events
  */
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class AuditLogService {
 
+    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+    
     /**
-     * Log resource access
+     * Log resource access events
      */
     public void logResourceAccess(Long resourceId, String action) {
         String user = getCurrentUserInfo();
-        log.info("RESOURCE ACCESS: {} performed '{}' on resource ID {}", user, action, resourceId);
+        String timestamp = getCurrentTimestamp();
+        log.info("[{}] RESOURCE ACCESS: {} performed '{}' on resource ID {}", 
+                timestamp, user, action, resourceId);
     }
 
     /**
@@ -29,7 +35,9 @@ public class AuditLogService {
      */
     public void logAdminAction(String entity, String action, String details) {
         String user = getCurrentUserInfo();
-        log.info("ADMIN ACTION: {} performed '{}' on {} - Details: {}", user, action, entity, details);
+        String timestamp = getCurrentTimestamp();
+        log.info("[{}] ADMIN ACTION: {} performed '{}' on {} - Details: {}", 
+                timestamp, user, action, entity, details);
     }
 
     /**
@@ -37,7 +45,9 @@ public class AuditLogService {
      */
     public void logSecurityEvent(String event, String details) {
         String user = getCurrentUserInfo();
-        log.warn("SECURITY EVENT: {} - {} - Details: {}", user, event, details);
+        String timestamp = getCurrentTimestamp();
+        log.warn("[{}] SECURITY EVENT: {} - {} - Details: {}", 
+                timestamp, user, event, details);
     }
 
     /**
@@ -45,7 +55,17 @@ public class AuditLogService {
      */
     public void logUserAction(String action, String details) {
         String user = getCurrentUserInfo();
-        log.info("USER ACTION: {} performed '{}' - Details: {}", user, action, details);
+        String timestamp = getCurrentTimestamp();
+        log.info("[{}] USER ACTION: {} performed '{}' - Details: {}", 
+                timestamp, user, action, details);
+    }
+    
+    /**
+     * Log system events (not associated with a specific user)
+     */
+    public void logSystemEvent(String event, String details) {
+        String timestamp = getCurrentTimestamp();
+        log.info("[{}] SYSTEM EVENT: {} - {}", timestamp, event, details);
     }
     
     /**
@@ -65,5 +85,12 @@ public class AuditLogService {
         }
         
         return auth.getName();
+    }
+    
+    /**
+     * Get current timestamp formatted for logging
+     */
+    private String getCurrentTimestamp() {
+        return TIMESTAMP_FORMAT.format(LocalDateTime.now());
     }
 }
