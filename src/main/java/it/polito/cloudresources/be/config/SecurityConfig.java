@@ -13,9 +13,15 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -29,29 +35,48 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Security configuration for JWT authentication with Keycloak integration
+ * Unified security configuration for all environments
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@Profile("!dev") // Active in all profiles except dev
 public class SecurityConfig {
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
-
+    
     /**
-     * Configures security settings for the application
+     * Configure security for development environment
      */
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    @Profile("dev")
+    public SecurityFilterChain devFilterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/h2-console/**").permitAll()
+                        .anyRequest().permitAll()
+                )
+                .httpBasic(httpBasic -> {})
+                .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.sameOrigin()));
+
+        return http.build();
+    }
+    
+    /**
+     * Configure security for production environment with JWT and OAuth2
+     */
+    @Bean
+    @Profile("!dev")
+    public SecurityFilterChain prodFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
+                        .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/users/me", "/users/me/**").authenticated()
                         .requestMatchers("/resources/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/resource-types/**").hasRole("ADMIN")
@@ -62,14 +87,43 @@ public class SecurityConfig {
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                 );
 
-        // Allow frames for H2 console
-        http.headers(headers -> headers.frameOptions(frameOptions -> frameOptions.sameOrigin()));
-
         return http.build();
     }
-
+    
     /**
-     * Creates a CORS configuration source
+     * User details service for development environment (in-memory)
+     */
+    @Bean
+    @Profile("dev")
+    public UserDetailsService userDetailsService(
+            @Value("${app.security.admin-username:admin}") String adminUsername,
+            @Value("${app.security.admin-password:admin}") String adminPassword) {
+        
+        UserDetails adminUser = User.builder()
+                .username(adminUsername)
+                .password(passwordEncoder().encode(adminPassword))
+                .roles("ADMIN", "USER")
+                .build();
+
+        UserDetails regularUser = User.builder()
+                .username("user")
+                .password(passwordEncoder().encode("password"))
+                .roles("USER")
+                .build();
+
+        return new InMemoryUserDetailsManager(adminUser, regularUser);
+    }
+    
+    /**
+     * Password encoder for both environments
+     */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+    
+    /**
+     * Common CORS configuration
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
@@ -84,11 +138,12 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
-
+    
     /**
      * JWT Authentication Converter for Keycloak role mapping
      */
     @Bean
+    @Profile("!dev")
     public Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter() {
         JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
         jwtConverter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter());
@@ -99,6 +154,7 @@ public class SecurityConfig {
      * Extract roles from JWT token and convert them to Spring Security GrantedAuthorities
      */
     @Bean
+    @Profile("!dev")
     public Converter<Jwt, Collection<GrantedAuthority>> jwtGrantedAuthoritiesConverter() {
         JwtGrantedAuthoritiesConverter defaultConverter = new JwtGrantedAuthoritiesConverter();
 

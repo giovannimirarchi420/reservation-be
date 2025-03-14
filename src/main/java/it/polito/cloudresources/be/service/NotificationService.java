@@ -1,6 +1,7 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.NotificationDTO;
+import it.polito.cloudresources.be.mapper.NotificationMapper;
 import it.polito.cloudresources.be.model.Notification;
 import it.polito.cloudresources.be.model.NotificationType;
 import it.polito.cloudresources.be.model.User;
@@ -8,13 +9,11 @@ import it.polito.cloudresources.be.repository.NotificationRepository;
 import it.polito.cloudresources.be.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Service for notification operations
@@ -25,24 +24,25 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
-    private final ModelMapper modelMapper;
+    private final NotificationMapper notificationMapper;
+    private final AuditLogService auditLogService;
 
     /**
      * Get all notifications for a user
      */
     public List<NotificationDTO> getUserNotifications(Long userId) {
-        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(notification -> modelMapper.map(notification, NotificationDTO.class))
-                .collect(Collectors.toList());
+        return notificationMapper.toDto(
+                notificationRepository.findByUserIdOrderByCreatedAtDesc(userId)
+        );
     }
 
     /**
      * Get unread notifications for a user
      */
     public List<NotificationDTO> getUnreadNotifications(Long userId) {
-        return notificationRepository.findByUserIdAndReadOrderByCreatedAtDesc(userId, false).stream()
-                .map(notification -> modelMapper.map(notification, NotificationDTO.class))
-                .collect(Collectors.toList());
+        return notificationMapper.toDto(
+                notificationRepository.findByUserIdAndReadOrderByCreatedAtDesc(userId, false)
+        );
     }
 
     /**
@@ -61,7 +61,7 @@ public class NotificationService {
                 .filter(notification -> notification.getUser().getId().equals(userId))
                 .map(notification -> {
                     notification.setRead(true);
-                    return modelMapper.map(notificationRepository.save(notification), NotificationDTO.class);
+                    return notificationMapper.toDto(notificationRepository.save(notification));
                 });
     }
 
@@ -75,6 +75,9 @@ public class NotificationService {
             notification.setRead(true);
             notificationRepository.save(notification);
         }
+        
+        // Log the action
+        auditLogService.logUserAction("notification", "Mark all as read for user ID: " + userId);
     }
 
     /**
@@ -85,6 +88,10 @@ public class NotificationService {
         Optional<Notification> notification = notificationRepository.findById(notificationId);
         if (notification.isPresent() && notification.get().getUser().getId().equals(userId)) {
             notificationRepository.delete(notification.get());
+            
+            // Log the action
+            auditLogService.logUserAction("notification", "Delete notification ID: " + notificationId);
+            
             return true;
         }
         return false;
@@ -112,7 +119,7 @@ public class NotificationService {
         notification.setUser(user);
         
         Notification savedNotification = notificationRepository.save(notification);
-        return modelMapper.map(savedNotification, NotificationDTO.class);
+        return notificationMapper.toDto(savedNotification);
     }
 
     /**
@@ -138,6 +145,10 @@ public class NotificationService {
             
             notificationRepository.save(notification);
         }
+        
+        // Log the action
+        auditLogService.logSystemEvent("Create role notification", 
+                "Created notifications for role: " + role + " with message: " + message);
     }
 
     /**
@@ -171,5 +182,8 @@ public class NotificationService {
             
             notificationRepository.save(notification);
         }
+        
+        // Log the action
+        auditLogService.logSystemEvent("Global notification", "Created global notification: " + message);
     }
 }

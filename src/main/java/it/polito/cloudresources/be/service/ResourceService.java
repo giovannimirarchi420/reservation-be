@@ -1,18 +1,16 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.ResourceDTO;
+import it.polito.cloudresources.be.mapper.ResourceMapper;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
-import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.model.User;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
-import it.polito.cloudresources.be.repository.ResourceTypeRepository;
-import jakarta.persistence.EntityNotFoundException;
+import it.polito.cloudresources.be.util.DateTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,19 +30,17 @@ import java.util.stream.Collectors;
 public class ResourceService {
 
     private final ResourceRepository resourceRepository;
-    private final ResourceTypeRepository resourceTypeRepository;
     private final EventRepository eventRepository;
     private final NotificationService notificationService;
-    private final ModelMapper modelMapper;
     private final AuditLogService auditLogService;
+    private final ResourceMapper resourceMapper;
+    private final DateTimeUtils dateTimeUtils;
 
     /**
      * Get all resources
      */
     public List<ResourceDTO> getAllResources() {
-        return resourceRepository.findAll().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return resourceMapper.toDto(resourceRepository.findAll());
     }
 
     /**
@@ -52,25 +48,21 @@ public class ResourceService {
      */
     public Optional<ResourceDTO> getResourceById(Long id) {
         return resourceRepository.findById(id)
-                .map(this::convertToDTO);
+                .map(resourceMapper::toDto);
     }
 
     /**
      * Get resources by status
      */
     public List<ResourceDTO> getResourcesByStatus(ResourceStatus status) {
-        return resourceRepository.findByStatus(status).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return resourceMapper.toDto(resourceRepository.findByStatus(status));
     }
 
     /**
      * Get resources by type
      */
     public List<ResourceDTO> getResourcesByType(Long typeId) {
-        return resourceRepository.findByTypeId(typeId).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return resourceMapper.toDto(resourceRepository.findByTypeId(typeId));
     }
 
     /**
@@ -78,7 +70,7 @@ public class ResourceService {
      */
     @Transactional
     public ResourceDTO createResource(ResourceDTO resourceDTO) {
-        Resource resource = convertToEntity(resourceDTO);
+        Resource resource = resourceMapper.toEntity(resourceDTO);
         Resource savedResource = resourceRepository.save(resource);
         
         // Log the action
@@ -90,7 +82,7 @@ public class ResourceService {
             "Resource " + savedResource.getName() + " has been added to the system"
         );
         
-        return convertToDTO(savedResource);
+        return resourceMapper.toDto(savedResource);
     }
 
     /**
@@ -103,32 +95,24 @@ public class ResourceService {
                     // Store old status for comparison
                     ResourceStatus oldStatus = existingResource.getStatus();
                     
-                    // Update fields
-                    existingResource.setName(resourceDTO.getName());
-                    existingResource.setSpecs(resourceDTO.getSpecs());
-                    existingResource.setLocation(resourceDTO.getLocation());
-                    existingResource.setStatus(resourceDTO.getStatus());
+                    // Update resource using mapper
+                    Resource updatedResource = resourceMapper.toEntity(resourceDTO);
+                    updatedResource.setId(id);
                     
-                    // Update resource type if changed
-                    if (!existingResource.getType().getId().equals(resourceDTO.getTypeId())) {
-                        ResourceType newType = resourceTypeRepository.findById(resourceDTO.getTypeId())
-                                .orElseThrow(() -> new EntityNotFoundException("Resource type not found"));
-                        existingResource.setType(newType);
-                    }
-                    
-                    Resource updatedResource = resourceRepository.save(existingResource);
+                    // Save the updated resource
+                    Resource savedResource = resourceRepository.save(updatedResource);
                     
                     // Log the action
                     auditLogService.logAdminAction("Resource", "update", 
-                            "Updated resource: " + updatedResource.getName());
+                            "Updated resource: " + savedResource.getName());
                     
                     // Check if status has changed
-                    if (oldStatus != updatedResource.getStatus()) {
+                    if (oldStatus != savedResource.getStatus()) {
                         // Handle status change notifications
-                        handleResourceStatusChange(updatedResource, oldStatus);
+                        handleResourceStatusChange(savedResource, oldStatus);
                     }
                     
-                    return convertToDTO(updatedResource);
+                    return resourceMapper.toDto(savedResource);
                 });
     }
 
@@ -151,8 +135,71 @@ public class ResourceService {
                     // Handle status change notifications
                     handleResourceStatusChange(updatedResource, oldStatus);
                     
-                    return convertToDTO(updatedResource);
+                    return resourceMapper.toDto(updatedResource);
                 });
+    }
+
+    /**
+     * Delete resource
+     */
+    @Transactional
+    public boolean deleteResource(Long id) {
+        Optional<Resource> resourceOpt = resourceRepository.findById(id);
+        if (resourceOpt.isPresent()) {
+            Resource resource = resourceOpt.get();
+            
+            // Check if resource has future bookings
+            ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
+            List<Event> futureEvents = eventRepository.findByResourceId(id).stream()
+                    .filter(event -> event.getEnd().isAfter(now))
+                    .collect(Collectors.toList());
+            
+            // Notify users with future bookings
+            if (!futureEvents.isEmpty()) {
+                Set<User> usersToNotify = new HashSet<>();
+                
+                // Collect all unique users with future bookings
+                // Delete all future bookings
+                for (Event event : futureEvents) {
+                    usersToNotify.add(event.getUser());
+                    eventRepository.delete(event);
+                }
+
+                // Send notification to each affected user
+                for (User user : usersToNotify) {
+                    notificationService.createNotification(
+                        user.getId(),
+                        "Booking cancelled: Resource " + resource.getName() + " has been removed",
+                        "ERROR"
+                    );
+                }
+            }
+            
+            // Log the action
+            auditLogService.logAdminAction("Resource", "delete", "Deleted resource: " + resource.getName());
+            
+            // Delete the resource
+            resourceRepository.deleteById(id);
+            
+            // Notify admins about deletion
+            notificationService.createSystemNotification(
+                "Resource deleted", 
+                "Resource " + resource.getName() + " has been deleted from the system"
+            );
+            
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Search resources
+     */
+    public List<ResourceDTO> searchResources(String query) {
+        return resourceMapper.toDto(
+                resourceRepository.findByNameContainingOrSpecsContainingOrLocationContaining(
+                        query, query, query)
+        );
     }
 
     /**
@@ -177,7 +224,7 @@ public class ResourceService {
             (newStatus == ResourceStatus.MAINTENANCE || newStatus == ResourceStatus.UNAVAILABLE)) {
             
             // Find all future bookings for this resource
-            ZonedDateTime now = ZonedDateTime.now();
+            ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
             List<Event> futureEvents = eventRepository.findByResourceId(resource.getId()).stream()
                     .filter(event -> event.getEnd().isAfter(now))
                     .collect(Collectors.toList());
@@ -211,7 +258,7 @@ public class ResourceService {
              newStatus == ResourceStatus.ACTIVE) {
             
             // Find all users with upcoming bookings for this resource
-            ZonedDateTime now = ZonedDateTime.now();
+            ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
             List<Event> futureEvents = eventRepository.findByResourceId(resource.getId()).stream()
                     .filter(event -> event.getEnd().isAfter(now))
                     .collect(Collectors.toList());
@@ -239,91 +286,5 @@ public class ResourceService {
                         usersToNotify.size(), resource.getName());
             }
         }
-    }
-
-    /**
-     * Delete resource
-     */
-    @Transactional
-    public boolean deleteResource(Long id) {
-        Optional<Resource> resourceOpt = resourceRepository.findById(id);
-        if (resourceOpt.isPresent()) {
-            Resource resource = resourceOpt.get();
-            
-            // Check if resource has future bookings
-            ZonedDateTime now = ZonedDateTime.now();
-            List<Event> futureEvents = eventRepository.findByResourceId(id).stream()
-                    .filter(event -> event.getEnd().isAfter(now))
-                    .collect(Collectors.toList());
-            
-            // Notify users with future bookings
-            if (!futureEvents.isEmpty()) {
-                Set<User> usersToNotify = new HashSet<>();
-                
-                // Collect all unique users with future bookings
-                for (Event event : futureEvents) {
-                    usersToNotify.add(event.getUser());
-                }
-                
-                // Send notification to each affected user
-                for (User user : usersToNotify) {
-                    notificationService.createNotification(
-                        user.getId(),
-                        "Booking cancelled: Resource " + resource.getName() + " has been removed",
-                        "ERROR"
-                    );
-                }
-            }
-            
-            // Log the action
-            auditLogService.logAdminAction("Resource", "delete", "Deleted resource: " + resource.getName());
-            
-            // Delete the resource
-            resourceRepository.deleteById(id);
-            
-            // Notify admins about deletion
-            notificationService.createSystemNotification(
-                "Resource deleted", 
-                "Resource " + resource.getName() + " has been deleted from the system"
-            );
-            
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Search resources
-     */
-    public List<ResourceDTO> searchResources(String query) {
-        return resourceRepository.findByNameContainingOrSpecsContainingOrLocationContaining(
-                query, query, query).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Convert entity to DTO
-     */
-    private ResourceDTO convertToDTO(Resource resource) {
-        ResourceDTO dto = modelMapper.map(resource, ResourceDTO.class);
-        dto.setTypeId(resource.getType().getId());
-        dto.setTypeName(resource.getType().getName());
-        dto.setTypeColor(resource.getType().getColor());
-        return dto;
-    }
-
-    /**
-     * Convert DTO to entity
-     */
-    private Resource convertToEntity(ResourceDTO dto) {
-        Resource resource = modelMapper.map(dto, Resource.class);
-        
-        // Set the resource type
-        ResourceType type = resourceTypeRepository.findById(dto.getTypeId())
-                .orElseThrow(() -> new EntityNotFoundException("Resource type not found"));
-        resource.setType(type);
-        
-        return resource;
     }
 }

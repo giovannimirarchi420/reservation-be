@@ -45,5 +45,5 @@ logging:
     org.springframework.security: WARN
     org.springframework.web: INFO
     org.hibernate.SQL: INFO
-  # Per abilitare il logging dei dettagli delle richieste HTTP:
+  # To enable logging of HTTP request details:
     org.springframework.web.filter.CommonsRequestLoggingFilter: DEBUG
