@@ -75,6 +75,41 @@ public class UserController {
     @Operation(summary = "Create user", description = "Creates a new user (Admin only)")
     public ResponseEntity<Object> createUser(@RequestBody Map<String, Object> userData) {
         try {
+            // Extract basic data to check
+            String username = (String) userData.get("username");
+            String email = (String) userData.get("email");
+            
+            // Check if username already exists
+            if (userService.getUserByUsername(username).isPresent()) {
+                return utils.createErrorResponse(
+                    HttpStatus.CONFLICT, 
+                    "Username already exists: " + username
+                );
+            }
+            
+            // Check if email already exists
+            if (userService.getUserByEmail(email).isPresent()) {
+                return utils.createErrorResponse(
+                    HttpStatus.CONFLICT, 
+                    "Email already exists: " + email
+                );
+            }
+            
+            // Check with Keycloak as well (double check)
+            if (keycloakService.getUserByUsername(username).isPresent()) {
+                return utils.createErrorResponse(
+                    HttpStatus.CONFLICT, 
+                    "Username already exists in authentication system: " + username
+                );
+            }
+            
+            if (keycloakService.getUserByEmail(email).isPresent()) {
+                return utils.createErrorResponse(
+                    HttpStatus.CONFLICT, 
+                    "Email already exists in authentication system: " + email
+                );
+            }
+            
             String keycloakId = createUserInKeycloak(userData);
             if (keycloakId == null) {
                 return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create user in Keycloak");
@@ -83,7 +118,11 @@ public class UserController {
             UserDTO userDTO = buildUserDTOFromData(userData, keycloakId);
             UserDTO createdUser = userService.createUser(userDTO);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
+        } catch (IllegalArgumentException e) {
+            // Handle validation errors
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Invalid input: " + e.getMessage());
         } catch (Exception e) {
+            // Log the detailed error for debugging
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to create user: " + e.getMessage());
         }
     }
@@ -191,15 +230,49 @@ public class UserController {
     // Helper methods
     
     private String createUserInKeycloak(Map<String, Object> userData) {
+        // Validate required fields
         String username = (String) userData.get("username");
         String email = (String) userData.get("email");
         String firstName = (String) userData.get("firstName");
         String lastName = (String) userData.get("lastName");
         String password = (String) userData.get("password");
+        
+        if (username == null || username.trim().isEmpty()) {
+            throw new IllegalArgumentException("Username is required");
+        }
+        
+        if (email == null || email.trim().isEmpty()) {
+            throw new IllegalArgumentException("Email is required");
+        }
+        
+        if (firstName == null || firstName.trim().isEmpty()) {
+            throw new IllegalArgumentException("First name is required");
+        }
+        
+        if (lastName == null || lastName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Last name is required");
+        }
+        
+        if (password == null || password.trim().isEmpty()) {
+            throw new IllegalArgumentException("Password is required");
+        }
+        
+        // Get roles, with validation
         @SuppressWarnings("unchecked")
         List<String> roles = (List<String>) userData.get("roles");
         
-        return keycloakService.createUser(username, email, firstName, lastName, password, roles);
+        if (roles == null || roles.isEmpty()) {
+            throw new IllegalArgumentException("At least one role must be specified");
+        }
+        
+        // Attempt to create the user in Keycloak
+        String keycloakId = keycloakService.createUser(username, email, firstName, lastName, password, roles);
+        
+        if (keycloakId == null) {
+            throw new RuntimeException("Failed to create user in authentication system. This could be due to an existing username or email, invalid role, or a system error.");
+        }
+        
+        return keycloakId;
     }
     
     private UserDTO buildUserDTOFromData(Map<String, Object> userData, String keycloakId) {

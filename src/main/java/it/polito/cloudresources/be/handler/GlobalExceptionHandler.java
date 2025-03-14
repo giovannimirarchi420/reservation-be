@@ -94,6 +94,17 @@ public class GlobalExceptionHandler {
         ApiResponseDTO response = new ApiResponseDTO(false, ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
+    
+    /**
+     * Handle illegal argument exceptions (input validation)
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponseDTO> handleIllegalArgumentException(
+            IllegalArgumentException ex, WebRequest request) {
+        
+        ApiResponseDTO response = new ApiResponseDTO(false, "Input validation failed: " + ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
 
     /**
      * Handle all other exceptions
