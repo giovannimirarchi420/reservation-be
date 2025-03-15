@@ -25,7 +25,7 @@ public class MockKeycloakService extends KeycloakService {
     public MockKeycloakService() {
         // Create sample admin user
         UserRepresentation adminUser = new UserRepresentation();
-        adminUser.setId("admin-id");
+        adminUser.setId("2");
         adminUser.setUsername("admin");
         adminUser.setEmail("admin@example.com");
         adminUser.setFirstName("Admin");
@@ -38,7 +38,7 @@ public class MockKeycloakService extends KeycloakService {
 
         // Create sample regular user
         UserRepresentation regularUser = new UserRepresentation();
-        regularUser.setId("user-id");
+        regularUser.setId("1");
         regularUser.setUsername("user");
         regularUser.setEmail("user@example.com");
         regularUser.setFirstName("Regular");

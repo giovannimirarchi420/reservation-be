@@ -158,15 +158,17 @@ public class DataInitializer {
         adminUser.setEmail("admin@example.com");
         adminUser.setAvatar("AU");
         adminUser.setRoles(Set.of("ADMIN"));
+        adminUser.setKeycloakId("aaa-bbb-ccc");
         userRepository.save(adminUser);
         
         User regularUser = new User();
-        adminUser.setUsername("user1");
-        adminUser.setFirstName("Dario");
-        adminUser.setLastName("Argento");
+        regularUser.setUsername("user1");
+        regularUser.setFirstName("Dario");
+        regularUser.setLastName("Argento");
         regularUser.setEmail("user@example.com");
         regularUser.setAvatar("RU");
         regularUser.setRoles(Set.of("USER"));
+        regularUser.setKeycloakId("ccc-bbb-ddd");
         userRepository.save(regularUser);
         
         log.info("Sample users created.");

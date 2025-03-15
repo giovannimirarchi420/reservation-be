@@ -28,7 +28,14 @@ spring:
 
 # Disable Keycloak for development
 keycloak:
-  enabled: false
+  auth-server-url: http://localhost:8081/auth
+  realm: resource-management
+  resource: resource-management-app
+  credentials:
+    secret: dummy-secret
+  use-resource-role-mappings: true
+  bearer-only: true
+  enabled: false # Questa proprietà indica che stiamo usando il mock
 
 # Application specific settings
 app:
