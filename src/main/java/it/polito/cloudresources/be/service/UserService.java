@@ -1,16 +1,15 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.UserDTO;
+import it.polito.cloudresources.be.mapper.UserMapper;
 import it.polito.cloudresources.be.model.User;
 import it.polito.cloudresources.be.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Service for user operations
@@ -20,15 +19,14 @@ import java.util.stream.Collectors;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final ModelMapper modelMapper;
+    private final UserMapper userMapper;
+    private final AuditLogService auditLogService;
 
     /**
      * Get all users
      */
     public List<UserDTO> getAllUsers() {
-        return userRepository.findAll().stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
+        return userMapper.toDto(userRepository.findAll());
     }
 
     /**
@@ -36,7 +34,7 @@ public class UserService {
      */
     public Optional<UserDTO> getUserById(Long id) {
         return userRepository.findById(id)
-                .map(this::mapToDTO);
+                .map(userMapper::toDto);
     }
 
     /**
@@ -44,7 +42,7 @@ public class UserService {
      */
     public Optional<UserDTO> getUserByEmail(String email) {
         return userRepository.findByEmail(email)
-                .map(this::mapToDTO);
+                .map(userMapper::toDto);
     }
     
     /**
@@ -52,7 +50,7 @@ public class UserService {
      */
     public Optional<UserDTO> getUserByUsername(String username) {
         return userRepository.findByUsername(username)
-                .map(this::mapToDTO);
+                .map(userMapper::toDto);
     }
 
     /**
@@ -60,7 +58,7 @@ public class UserService {
      */
     public Optional<UserDTO> getUserByKeycloakId(String keycloakId) {
         return userRepository.findByKeycloakId(keycloakId)
-                .map(this::mapToDTO);
+                .map(userMapper::toDto);
     }
 
     /**
@@ -77,9 +75,14 @@ public class UserService {
      */
     @Transactional
     public UserDTO createUser(UserDTO userDTO) {
-        User user = mapToEntity(userDTO);
+        User user = userMapper.toEntity(userDTO);
         User savedUser = userRepository.save(user);
-        return mapToDTO(savedUser);
+        
+        // Log the action
+        auditLogService.logAdminAction("User", "create", 
+                "Created user: " + savedUser.getUsername());
+                
+        return userMapper.toDto(savedUser);
     }
 
     /**
@@ -90,9 +93,20 @@ public class UserService {
         User existingUser = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
-        updateUserFields(existingUser, userDTO);
-        User updatedUser = userRepository.save(existingUser);
-        return mapToDTO(updatedUser);
+        // Apply updates but preserve ID
+        User updatedUser = userMapper.toEntity(userDTO);
+        updatedUser.setId(id);
+        
+        // Preserve related entities that aren't in the DTO
+        updatedUser.setEvents(existingUser.getEvents());
+        
+        User savedUser = userRepository.save(updatedUser);
+        
+        // Log the action
+        auditLogService.logAdminAction("User", "update", 
+                "Updated user: " + savedUser.getUsername());
+                
+        return userMapper.toDto(savedUser);
     }
 
     /**
@@ -104,7 +118,17 @@ public class UserService {
             return false;
         }
         
+        // Get username for logging before deletion
+        String username = userRepository.findById(id)
+                .map(User::getUsername)
+                .orElse("Unknown");
+        
         userRepository.deleteById(id);
+        
+        // Log the action
+        auditLogService.logAdminAction("User", "delete", 
+                "Deleted user: " + username);
+        
         return true;
     }
 
@@ -112,42 +136,6 @@ public class UserService {
      * Get users by role
      */
     public List<UserDTO> getUsersByRole(String role) {
-        return userRepository.findByRolesContaining(role).stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
-    }
-
-    
-    // Private helper methods
-    
-    private void updateUserFields(User user, UserDTO userDTO) {
-        if (userDTO.getUsername() != null) {
-            user.setUsername(userDTO.getUsername());
-        }
-        if (userDTO.getFirstName() != null) {
-            user.setFirstName(userDTO.getFirstName());
-        }
-        if (userDTO.getLastName() != null) {
-            user.setLastName(userDTO.getLastName());
-        }
-        if (userDTO.getEmail() != null) {
-            user.setEmail(userDTO.getEmail());
-        }
-        if (userDTO.getAvatar() != null) {
-            user.setAvatar(userDTO.getAvatar());
-        }
-        
-        // Update roles if provided
-        if (userDTO.getRoles() != null) {
-            user.setRoles(userDTO.getRoles());
-        }
-    }
-    
-    private UserDTO mapToDTO(User user) {
-        return modelMapper.map(user, UserDTO.class);
-    }
-    
-    private User mapToEntity(UserDTO dto) {
-        return modelMapper.map(dto, User.class);
+        return userMapper.toDto(userRepository.findByRolesContaining(role));
     }
 }
