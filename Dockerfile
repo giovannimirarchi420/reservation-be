@@ -9,8 +9,8 @@ FROM eclipse-temurin:23-jdk
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
-# Aggiungi il certificato al cacerts
-# Assumendo che il certificato si chiami 'certificate.crt' e sia nella directory corrente durante il build
+# Add keycloak server certificate in cacerts
+# A 'certificate.crt' file must be in the same directory
 COPY certificate.crt /tmp/certificate.crt
 RUN keytool -import -trustcacerts -keystore "$JAVA_HOME/lib/security/cacerts" \
     -storepass changeit -noprompt -alias keycloak -file /tmp/certificate.crt \

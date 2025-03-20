@@ -6,24 +6,17 @@ spring:
     driverClassName: org.postgresql.Driver
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
-
     hibernate:
       ddl-auto: update
     show-sql: true
     properties:
       hibernate:
         format_sql: true
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-
-  # Disable OAuth2 Resource Server for development
   security:
     oauth2:
       resourceserver:
         jwt:
-          enabled: false
+          jwk-set-uri: ${KEYCLOAK_AUTH_SERVER_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs
 
 # Disable Keycloak for development
 keycloak:
@@ -34,7 +27,6 @@ keycloak:
     secret: dummy-secret
   use-resource-role-mappings: true
   bearer-only: true
-  #enabled: false # mock activated
 
 # Application specific settings
 app:

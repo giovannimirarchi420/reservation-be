@@ -39,37 +39,58 @@ The application uses OAuth2/OpenID Connect authentication through Keycloak:
 
 - Java 17+
 - Maven
-- PostgreSQL (production) or H2 (development)
+- Database (H2 for dev, PostgreSQL for test, Oracle for production)
 - Keycloak server (optional for development)
 
 ### Configuration
 
 The application has different configuration profiles:
 
-- **dev**: Uses H2 in-memory database and mocked Keycloak service
-- **prod** (default): Uses PostgreSQL and requires a running Keycloak server
+- **dev**: Uses H2 in-memory database and mocked Keycloak service for quick local development
+- **test**: Uses PostgreSQL and Keycloak, designed for running in Docker Compose environment
+- **pro**: Uses Oracle database and requires a running Keycloak server for production deployment
+
+Maven profiles are aligned with Spring profiles to ensure proper dependency management:
+
+- **dev** (default): Includes H2 dependencies
+- **test**: Includes PostgreSQL dependencies
+- **pro**: Includes Oracle JDBC dependencies
 
 #### Development Mode
 
-For quick setup and testing, use the `dev` profile:
+For quick setup and testing on your local machine, use the `dev` profile:
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev -Pdev
+```
+
+#### Test Mode with Docker Compose
+
+To run the application in a containerized environment with PostgreSQL and Keycloak, use the `test` profile. 
+The Docker Compose project for running the entire stack is available at:
+
+https://github.com/giovannimirarchi420/cloud-resource-reservation
+
+Run with:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=test -Ptest
 ```
 
 #### Production Mode
 
-Create a `application-prod.yml` file with your specific configuration or update the existing `application.yml`:
+For production deployment with Oracle database and Keycloak integration:
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
+./mvnw spring-boot:run -Dspring-boot.run.profiles=pro -Ppro
 ```
 
 ### Database
 
-The application uses:
-- H2 in-memory database for development
-- PostgreSQL for production
+The application supports multiple databases based on profile:
+- H2 in-memory database for development (`dev` profile)
+- PostgreSQL for testing in Docker Compose (`test` profile)
+- Oracle for production (`pro` profile)
 
 Database migrations are handled automatically through Hibernate.
 
@@ -361,4 +382,4 @@ GET /api/swagger-ui.html
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the LICENSE file for details
