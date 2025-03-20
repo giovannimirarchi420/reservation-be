@@ -1,19 +1,22 @@
-# Development Profile Configuration
 spring:
-  # H2 Configuration
   datasource:
-    url: jdbc:h2:mem:resourcedb
-    driverClassName: org.h2.Driver
-    username: sa
-    password: password
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driverClassName: org.postgresql.Driver
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
     hibernate:
       ddl-auto: update
     show-sql: true
     properties:
       hibernate:
         format_sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
 
   # Disable OAuth2 Resource Server for development
   security:
@@ -31,12 +34,12 @@ keycloak:
     secret: dummy-secret
   use-resource-role-mappings: true
   bearer-only: true
-  enabled: false # Questa proprietà indica che stiamo usando il mock
+  #enabled: false # mock activated
 
 # Application specific settings
 app:
   cors:
-    allowed-origins: http://localhost:3000
+    allowed-origins: ${FRONTEND_APP_URL},http://localhost:3000
   # Dev settings
   security:
     dev-mode: true

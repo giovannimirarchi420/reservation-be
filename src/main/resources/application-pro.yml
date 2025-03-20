@@ -7,12 +7,12 @@ server:
 # Database Configuration
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
-    driverClassName: org.postgresql.Driver
+    url: ${DB_URL}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
+    driver-class-name: oracle.jdbc.OracleDriver
   jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    database-platform: org.hibernate.dialect.OracleDialect
     hibernate:
       ddl-auto: update
     show-sql: false
@@ -29,8 +29,15 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KEYCLOAK_AUTH_SERVER_URL}/realms/${KEYCLOAK_REALM}
+          #issuer-uri: ${KEYCLOAK_AUTH_SERVER_URL}/realms/${KEYCLOAK_REALM}
           jwk-set-uri: ${KEYCLOAK_AUTH_SERVER_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs
+  webflux:
+    http-client:
+      ssl:
+        verify-hostname: false
+  rest:
+    security:
+      trust-all: true
 
 # Keycloak Configuration
 keycloak:
@@ -42,8 +49,8 @@ keycloak:
   use-resource-role-mappings: true
   bearer-only: true
   admin:
-    username: admin
-    password: admin
+    username: ${KEYCLOAK_ADMIN_USER}
+    password: ${KEYCLOAK_ADMIN_PASSWORD}
 
 # Application specific settings
 app:

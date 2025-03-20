@@ -26,19 +26,30 @@ public class JpaConfig {
     }
 
     /**
-     * Configurazione per il dialetto PostgreSQL con supporto ZonedDateTime
+     * Oracle Dialect configuration with ZonedDateTime support
      */
     @Configuration
     @Profile("pro")
+    public static class OracleSQLConfig {
+        @Bean
+        public org.hibernate.dialect.OracleDialect oracleDialect() {
+            return new org.hibernate.dialect.OracleDialect();
+        }
+    }
+
+    /**
+     * PostgreSQL Dialect configuration with ZonedDateTime support
+     */
+    @Configuration
+    @Profile("test")
     public static class PostgreSQLConfig {
         @Bean
         public org.hibernate.dialect.PostgreSQLDialect postgresDialect() {
             return new org.hibernate.dialect.PostgreSQLDialect();
         }
     }
-
     /**
-     * Configurazione per il dialetto H2 con supporto ZonedDateTime
+     * H2 Dialect configuration with ZonedDateTime support
      */
     @Configuration
     @Profile("dev")
