@@ -14,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -43,7 +44,10 @@ public class NotificationController {
         Long userId = userService.getUserIdByKeycloakId(keycloakId);
         
         if (userId == null) {
-            return ResponseEntity.notFound().build();
+            //Returning 404 here, would compromise the FE at the first startup, when no user
+            //are configured on internal DB (just on keycloak thanks to the resource-management-realm.json)
+            //TODO: Manage better this case
+            return ResponseEntity.ok(Arrays.asList());
         }
         
         List<NotificationDTO> notifications;
