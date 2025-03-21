@@ -1,12 +1,19 @@
 # Cloud Resource Management System
 
-A Spring Boot application for managing the reservation and booking of cloud/hardware resources within an organization. This system provides a RESTful API for managing resources, users, bookings, and notifications, with a focus on secure access through Keycloak integration.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Java](https://img.shields.io/badge/Java-23-orange.svg)](https://www.oracle.com/java/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+
+A Spring Boot application for managing the reservation and booking of any type of resources within an organization. This system provides a RESTful API for managing resources, users, bookings, and notifications, with a focus on secure access through Keycloak integration.
+
+> **Note:** This backend is part of a larger project available at [cloud-resource-reservation](https://github.com/giovannimirarchi420/cloud-resource-reservation), which includes the frontend, Keycloak configuration, and Docker Compose setup to run the complete system.
 
 ## 🎯 Project Scope
 
 This system enables organizations to:
 
-- Manage various types of resources (servers, GPUs, network equipment, etc.)
+- Manage any type of resources, which are configurable through resource types
 - Track resource status (active, maintenance, unavailable)
 - Allow users to book resources for specific time periods
 - Prevent booking conflicts through time-slot validation
@@ -96,6 +103,10 @@ Database migrations are handled automatically through Hibernate.
 
 ### Keycloak Setup
 
+When using the Docker Compose setup from the [parent repository](https://github.com/giovannimirarchi420/cloud-resource-reservation), the Keycloak configuration is performed automatically with pre-configured realm, client, and roles.
+
+If you're setting up Keycloak manually:
+
 1. Install and run Keycloak server
 2. Create a new realm called `resource-management`
 3. Create a client called `resource-management-app`
@@ -122,7 +133,7 @@ Most endpoints return data in a standard format:
 
 ### Resources
 
-Resources represent physical or virtual assets that can be booked.
+Resources represent any physical or virtual assets that can be booked, configurable through resource types.
 
 #### Get All Resources
 ```
@@ -145,9 +156,9 @@ POST /resources
 
 ```json
 {
-  "name": "Server XYZ",
-  "specs": "32GB RAM, 8 CPUs",
-  "location": "Data Center 1",
+  "name": "Resource XYZ",
+  "specs": "Specifications for the resource",
+  "location": "Location identifier",
   "status": "ACTIVE",
   "typeId": 1
 }
@@ -175,7 +186,7 @@ GET /resources/search?query=term
 
 ### Resource Types
 
-Resource types categorize resources (e.g., Server, GPU, Switch).
+Resource types categorize resources and are fully configurable.
 
 #### Get All Resource Types
 ```
@@ -194,7 +205,7 @@ POST /resource-types
 
 ```json
 {
-  "name": "Server",
+  "name": "Custom Resource Type",
   "color": "#1976d2"
 }
 ```
@@ -240,8 +251,8 @@ POST /events
 
 ```json
 {
-  "title": "Development work",
-  "description": "Working on Project XYZ",
+  "title": "Resource reservation",
+  "description": "Purpose of booking",
   "resourceId": 1,
   "start": "2023-04-01T09:00:00",
   "end": "2023-04-01T17:00:00"
