@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +30,7 @@ public class EventService {
     private final EventRepository eventRepository;
     private final ResourceRepository resourceRepository;
     private final NotificationService notificationService;
+    private final ResourceService resourceService;
     private final EventMapper eventMapper;
     private final DateTimeUtils dateTimeUtils;
 
@@ -226,12 +228,49 @@ public class EventService {
      * Check if there's a time conflict for a resource booking
      */
     public boolean hasTimeConflict(Long resourceId, ZonedDateTime start, ZonedDateTime end, Long eventId) {
-        // Ensure dates have time zone info
+        // Normalize dates with time zone info
         ZonedDateTime normalizedStart = dateTimeUtils.ensureTimeZone(start);
         ZonedDateTime normalizedEnd = dateTimeUtils.ensureTimeZone(end);
         
-        List<Event> conflictingEvents = eventRepository.findConflictingEvents(resourceId, normalizedStart, normalizedEnd, eventId);
-        return !conflictingEvents.isEmpty();
+        // Get the resource
+        Resource resource = resourceRepository.findById(resourceId)
+            .orElseThrow(() -> new EntityNotFoundException("Resource not found"));
+        
+        // Check conflicts for this specific resource
+        List<Event> directConflicts = eventRepository.findConflictingEvents(
+            resourceId, normalizedStart, normalizedEnd, eventId);
+            
+        if (!directConflicts.isEmpty()) {
+            return true;
+        }
+        
+        // Check if any parent resource is booked during this time
+        Resource parent = resource.getParent();
+        while (parent != null) {
+            List<Event> parentConflicts = eventRepository.findConflictingEvents(
+                parent.getId(), normalizedStart, normalizedEnd, eventId);
+                
+            if (!parentConflicts.isEmpty()) {
+                return true;
+            }
+            
+            parent = parent.getParent();
+        }
+        
+        // Check if any child resource is booked during this time
+        List<Resource> allSubResources = new ArrayList<>();
+        resourceService.collectAllSubResources(resource, allSubResources);
+        
+        for (Resource subResource : allSubResources) {
+            List<Event> childConflicts = eventRepository.findConflictingEvents(
+                subResource.getId(), normalizedStart, normalizedEnd, eventId);
+                
+            if (!childConflicts.isEmpty()) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     /**

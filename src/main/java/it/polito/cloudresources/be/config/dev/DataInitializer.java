@@ -35,7 +35,7 @@ public class DataInitializer {
      */
     @Bean
     public CommandLineRunner initData() {
-        return args -> {
+        return _ -> {
             log.info("Initializing sample data...");
             
             // Create resource types if none exist

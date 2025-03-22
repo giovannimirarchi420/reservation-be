@@ -1,5 +1,7 @@
 package it.polito.cloudresources.be.dto;
 
+import java.util.List;
+
 import it.polito.cloudresources.be.model.ResourceStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -20,6 +22,10 @@ public class ResourceDTO {
     @NotBlank(message = "Name is required")
     @Size(max = 100, message = "Name cannot exceed 100 characters")
     private String name;
+    
+    private Long parentId;
+    private List<Long> subResourceIds;
+    private String parentName;
 
     @NotBlank(message = "Specifications are required")
     @Size(max = 255, message = "Specifications cannot exceed 255 characters")

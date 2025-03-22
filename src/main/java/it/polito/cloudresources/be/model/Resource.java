@@ -25,6 +25,13 @@ public class Resource extends AuditableEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne
+    @JoinColumn(name = "parent_id")
+    private Resource parent;
+
+    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
+    private Set<Resource> subResources = new HashSet<>();
+
     @NotBlank
     @Size(max = 100)
     private String name;
@@ -46,4 +53,15 @@ public class Resource extends AuditableEntity {
 
     @OneToMany(mappedBy = "resource", cascade = CascadeType.ALL)
     private Set<Event> events = new HashSet<>();
+
+    // Helper methods for relationship management
+    public void addSubResource(Resource subResource) {
+        subResources.add(subResource);
+        subResource.setParent(this);
+    }
+
+    public void removeSubResource(Resource subResource) {
+        subResources.remove(subResource);
+        subResource.setParent(null);
+    }
 }

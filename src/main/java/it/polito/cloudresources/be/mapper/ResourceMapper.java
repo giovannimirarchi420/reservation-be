@@ -3,8 +3,12 @@ package it.polito.cloudresources.be.mapper;
 import it.polito.cloudresources.be.dto.ResourceDTO;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceType;
+import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import jakarta.persistence.EntityNotFoundException;
+
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,9 +18,11 @@ import org.springframework.stereotype.Component;
 public class ResourceMapper implements EntityMapper<ResourceDTO, Resource> {
     
     private final ResourceTypeRepository resourceTypeRepository;
+    private final ResourceRepository resourceRepository;
     
-    public ResourceMapper(ResourceTypeRepository resourceTypeRepository) {
+    public ResourceMapper(ResourceTypeRepository resourceTypeRepository, ResourceRepository resourceRepository) {
         this.resourceTypeRepository = resourceTypeRepository;
+        this.resourceRepository = resourceRepository;
     }
     
     @Override
@@ -37,6 +43,10 @@ public class ResourceMapper implements EntityMapper<ResourceDTO, Resource> {
             ResourceType type = resourceTypeRepository.findById(dto.getTypeId())
                     .orElseThrow(() -> new EntityNotFoundException("Resource type not found with ID: " + dto.getTypeId()));
             resource.setType(type);
+        }
+
+        if (dto.getParentId() != null) {
+            resourceRepository.findById(dto.getParentId()).ifPresent(resource::setParent);
         }
         
         return resource;
@@ -61,6 +71,15 @@ public class ResourceMapper implements EntityMapper<ResourceDTO, Resource> {
             dto.setTypeName(entity.getType().getName());
             dto.setTypeColor(entity.getType().getColor());
         }
+        
+        if (entity.getParent() != null) {
+            dto.setParentId(entity.getParent().getId());
+            dto.setParentName(entity.getParent().getName());
+        }
+
+        dto.setSubResourceIds(entity.getSubResources().stream()
+            .map(Resource::getId)
+            .collect(Collectors.toList()));
         
         return dto;
     }
