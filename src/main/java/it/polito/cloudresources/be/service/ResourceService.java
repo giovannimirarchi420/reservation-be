@@ -290,60 +290,6 @@ public class ResourceService {
         }
     }
 
-
-    @Transactional
-    public void updateResourceHierarchy(Long resourceId, Long parentId) {
-        Resource resource = resourceRepository.findById(resourceId)
-            .orElseThrow(() -> new EntityNotFoundException("Resource not found"));
-            
-        if (parentId == null) {
-            // Remove from current parent
-            if (resource.getParent() != null) {
-                resource.getParent().removeSubResource(resource);
-            }
-            resource.setParent(null);
-        } else {
-            Resource parent = resourceRepository.findById(parentId)
-                .orElseThrow(() -> new EntityNotFoundException("Parent resource not found"));
-            
-            // Check for circular references
-            if (isCircularReference(resource, parent)) {
-                throw new IllegalStateException("Cannot create circular reference in resource hierarchy");
-            }
-            
-            // Remove from current parent if exists
-            if (resource.getParent() != null) {
-                resource.getParent().removeSubResource(resource);
-            }
-            
-            // Add to new parent
-            parent.addSubResource(resource);
-        }
-        
-        resourceRepository.save(resource);
-    }
-
-    private boolean isCircularReference(Resource resource, Resource potentialParent) {
-        // Check if the potential parent is actually a child of the resource
-        if (resource.equals(potentialParent)) {
-            return true;
-        }
-        
-        return potentialParent.getSubResources().stream()
-            .anyMatch(subResource -> isCircularReference(resource, subResource));
-    }
-
-    // Method to get all sub-resources (direct and indirect)
-    public List<ResourceDTO> getAllSubResources(Long resourceId) {
-        Resource resource = resourceRepository.findById(resourceId)
-            .orElseThrow(() -> new EntityNotFoundException("Resource not found"));
-            
-        List<Resource> allSubResources = new ArrayList<>();
-        collectAllSubResources(resource, allSubResources);
-        
-        return resourceMapper.toDto(allSubResources);
-    }
-
     public void collectAllSubResources(Resource resource, List<Resource> subResources) {
         resource.getSubResources().forEach(subResource -> {
             subResources.add(subResource);
@@ -351,9 +297,4 @@ public class ResourceService {
         });
     }
 
-    public List<ResourceDTO> getResourceHierarchy() {
-        // Get only top-level resources (those without parents)
-        List<Resource> topLevelResources = resourceRepository.findByParentIsNull();
-        return resourceMapper.toDto(topLevelResources);
-    }
 }

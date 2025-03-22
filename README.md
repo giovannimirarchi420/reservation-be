@@ -176,21 +176,6 @@ PUT /resources/{id}
 PATCH /resources/{id}/status?status=MAINTENANCE
 ```
 
-#### Update Resource Parent (Admin only)
-```
-PATCH /resources/{id}/parent?parentId=5
-```
-
-#### Get Sub-Resources
-```
-GET /resources/{id}/sub-resources
-```
-
-#### Get Resource Hierarchy
-```
-GET /resources/hierarchy
-```
-
 #### Delete Resource (Admin only)
 ```
 DELETE /resources/{id}

@@ -123,30 +123,4 @@ public class ResourceController {
         List<ResourceDTO> resources = resourceService.searchResources(query);
         return ResponseEntity.ok(resources);
     }
-
-    // in ResourceController.java
-    @PatchMapping("/{id}/parent")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Update resource parent", description = "Sets or removes a parent resource")
-    public ResponseEntity<ResourceDTO> updateResourceParent(
-            @PathVariable Long id,
-            @RequestParam(required = false) Long parentId) {
-
-        resourceService.updateResourceHierarchy(id, parentId);
-        return resourceService.getResourceById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/{id}/sub-resources")
-    @Operation(summary = "Get sub-resources", description = "Get all sub-resources (direct and indirect) of a resource")
-    public ResponseEntity<List<ResourceDTO>> getSubResources(@PathVariable Long id) {
-        return ResponseEntity.ok(resourceService.getAllSubResources(id));
-    }
-
-    @GetMapping("/hierarchy")
-    @Operation(summary = "Get resource hierarchy", description = "Get resources in a hierarchical structure")
-    public ResponseEntity<List<ResourceDTO>> getResourceHierarchy() {
-        return ResponseEntity.ok(resourceService.getResourceHierarchy());
-    }
 }
