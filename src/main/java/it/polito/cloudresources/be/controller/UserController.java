@@ -7,6 +7,7 @@ import it.polito.cloudresources.be.dto.UserDTO;
 import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.UserService;
 import it.polito.cloudresources.be.util.ControllerUtils;
+import it.polito.cloudresources.be.util.SshKeyValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,6 +34,7 @@ public class UserController {
     private final UserService userService;
     private final KeycloakService keycloakService;
     private final ControllerUtils utils;
+    private final SshKeyValidator sshKeyValidator;
 
     /**
      * Get all users (admin only)
@@ -169,6 +172,19 @@ public class UserController {
                 return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
             }
             
+            // Validate SSH key if provided
+            if (userData.containsKey("sshPublicKey")) {
+                String sshPublicKey = (String) userData.get("sshPublicKey");
+                if (sshPublicKey != null && !sshPublicKey.trim().isEmpty()) {
+                    sshPublicKey = sshKeyValidator.formatSshKey(sshPublicKey);
+                    if (!sshKeyValidator.isValidSshPublicKey(sshPublicKey)) {
+                        return utils.createErrorResponse(HttpStatus.BAD_REQUEST, 
+                            "Invalid SSH public key format. Please provide a valid SSH key.");
+                    }
+                    userData.put("sshPublicKey", sshPublicKey);
+                }
+            }
+            
             UserDTO existingUser = existingUserOpt.get();
             Map<String, Object> keycloakUpdate = extractKeycloakUpdateFields(userData);
             
@@ -183,7 +199,7 @@ public class UserController {
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update profile: " + e.getMessage());
         }
     }
-
+    
     /**
      * Delete user (admin only)
      */
@@ -274,6 +290,79 @@ public class UserController {
         
         return keycloakId;
     }
+
+    /**
+     * Update current user's SSH key
+     */
+    @PutMapping("/me/ssh-key")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Update SSH key", description = "Updates the current user's SSH public key")
+    public ResponseEntity<Object> updateSshKey(@RequestBody Map<String, String> request, Authentication authentication) {
+        try {
+            String sshPublicKey = request.get("sshPublicKey");
+            String keycloakId = utils.getCurrentUserKeycloakId(authentication);
+            
+            Optional<UserDTO> existingUserOpt = userService.getUserByKeycloakId(keycloakId);
+            if (existingUserOpt.isEmpty()) {
+                return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
+            }
+            
+            UserDTO existingUser = existingUserOpt.get();
+            existingUser.setSshPublicKey(sshPublicKey);
+            
+            UserDTO updatedUser = userService.updateUser(existingUser.getId(), existingUser);
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update SSH key: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get current user's SSH key
+     */
+    @GetMapping("/me/ssh-key")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Get SSH key", description = "Retrieves the current user's SSH public key")
+    public ResponseEntity<Object> getSshKey(Authentication authentication) {
+        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
+        
+        Optional<UserDTO> existingUserOpt = userService.getUserByKeycloakId(keycloakId);
+        if (existingUserOpt.isEmpty()) {
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
+        }
+        
+        UserDTO existingUser = existingUserOpt.get();
+        
+        Map<String, String> response = new HashMap<>();
+        response.put("sshPublicKey", existingUser.getSshPublicKey());
+        
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Delete current user's SSH key
+     */
+    @DeleteMapping("/me/ssh-key")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Delete SSH key", description = "Deletes the current user's SSH public key")
+    public ResponseEntity<Object> deleteSshKey(Authentication authentication) {
+        try {
+            String keycloakId = utils.getCurrentUserKeycloakId(authentication);
+            
+            Optional<UserDTO> existingUserOpt = userService.getUserByKeycloakId(keycloakId);
+            if (existingUserOpt.isEmpty()) {
+                return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
+            }
+            
+            UserDTO existingUser = existingUserOpt.get();
+            existingUser.setSshPublicKey(null);
+            
+            userService.updateUser(existingUser.getId(), existingUser);
+            return utils.createSuccessResponse("SSH key deleted successfully");
+        } catch (Exception e) {
+            return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete SSH key: " + e.getMessage());
+        }
+    }
     
     private UserDTO buildUserDTOFromData(Map<String, Object> userData, String keycloakId) {
         UserDTO userDTO = new UserDTO();
@@ -329,6 +418,7 @@ public class UserController {
         userDTO.setLastName(getStringOrDefault(userData, "lastName", existingUser.getLastName()));
         userDTO.setEmail(getStringOrDefault(userData, "email", existingUser.getEmail()));
         userDTO.setAvatar(getStringOrDefault(userData, "avatar", existingUser.getAvatar()));
+        userDTO.setSshPublicKey(getStringOrDefault(userData, "sshPublicKey", existingUser.getSshPublicKey()));
         userDTO.setRoles(existingUser.getRoles()); // Users cannot change their own roles
         
         return userDTO;

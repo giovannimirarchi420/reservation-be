@@ -56,6 +56,9 @@ public class User extends AuditableEntity {
     @NotBlank
     @Column(name = "keycloak_id")
     private String keycloakId;
+    
+    @Column(name = "ssh_public_key", columnDefinition = "TEXT")
+    private String sshPublicKey;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))

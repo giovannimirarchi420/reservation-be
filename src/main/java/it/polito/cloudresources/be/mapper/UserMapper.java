@@ -24,6 +24,7 @@ public class UserMapper implements EntityMapper<UserDTO, User> {
         user.setEmail(dto.getEmail());
         user.setAvatar(dto.getAvatar());
         user.setKeycloakId(dto.getKeycloakId());
+        user.setSshPublicKey(dto.getSshPublicKey());
         
         if (dto.getRoles() != null) {
             user.setRoles(dto.getRoles());
@@ -46,6 +47,7 @@ public class UserMapper implements EntityMapper<UserDTO, User> {
         dto.setEmail(entity.getEmail());
         dto.setAvatar(entity.getAvatar());
         dto.setKeycloakId(entity.getKeycloakId());
+        dto.setSshPublicKey(entity.getSshPublicKey());
         dto.setRoles(entity.getRoles());
         
         return dto;

@@ -36,6 +36,8 @@ public class UserDTO {
     private String email;
 
     private String avatar;
+    
+    private String sshPublicKey;
 
     private Set<String> roles;
 
