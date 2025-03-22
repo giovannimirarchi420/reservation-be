@@ -19,6 +19,8 @@ This system enables organizations to:
 - Prevent booking conflicts through time-slot validation
 - Manage users and roles via Keycloak integration
 - Send and manage notifications to users
+- Support hierarchical resource structures with parent-child relationships
+- Store and manage SSH public keys for accessing resources
 
 ## 🏗️ Architecture
 
@@ -174,6 +176,21 @@ PUT /resources/{id}
 PATCH /resources/{id}/status?status=MAINTENANCE
 ```
 
+#### Update Resource Parent (Admin only)
+```
+PATCH /resources/{id}/parent?parentId=5
+```
+
+#### Get Sub-Resources
+```
+GET /resources/{id}/sub-resources
+```
+
+#### Get Resource Hierarchy
+```
+GET /resources/hierarchy
+```
+
 #### Delete Resource (Admin only)
 ```
 DELETE /resources/{id}
@@ -274,6 +291,11 @@ DELETE /events/{id}
 GET /events/check-conflicts?resourceId=1&start=2023-04-01T09:00:00&end=2023-04-01T17:00:00
 ```
 
+#### Check Resource Availability
+```
+GET /events/check-resource-availability?resourceId=1
+```
+
 ### Users
 
 Provides user management capabilities.
@@ -336,6 +358,27 @@ DELETE /users/{id}
 #### Get Users by Role (Admin only)
 ```
 GET /users/by-role/{role}
+```
+
+#### Get Current User's SSH Public Key
+```
+GET /users/me/ssh-key
+```
+
+#### Update Current User's SSH Public Key
+```
+PUT /users/me/ssh-key
+```
+
+```json
+{
+  "sshPublicKey": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQ...user@example.com"
+}
+```
+
+#### Delete Current User's SSH Public Key
+```
+DELETE /users/me/ssh-key
 ```
 
 ### Notifications
