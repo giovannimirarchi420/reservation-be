@@ -21,7 +21,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/resource-types")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
 @Tag(name = "Resource Types", description = "API for managing resource types (Admin only)")
 @SecurityRequirement(name = "bearer-auth")
 public class ResourceTypeController {
@@ -33,7 +32,6 @@ public class ResourceTypeController {
      * Get all resource types
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     @Operation(summary = "Get all resource types", description = "Retrieves all resource types")
     public ResponseEntity<List<ResourceTypeDTO>> getAllResourceTypes() {
         return ResponseEntity.ok(resourceTypeService.getAllResourceTypes());
@@ -43,7 +41,6 @@ public class ResourceTypeController {
      * Get resource type by ID
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     @Operation(summary = "Get resource type by ID", description = "Retrieves a specific resource type by its ID")
     public ResponseEntity<ResourceTypeDTO> getResourceTypeById(@PathVariable Long id) {
         return resourceTypeService.getResourceTypeById(id)
@@ -55,6 +52,7 @@ public class ResourceTypeController {
      * Create new resource type
      */
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Create resource type", description = "Creates a new resource type")
     public ResponseEntity<ResourceTypeDTO> createResourceType(@Valid @RequestBody ResourceTypeDTO resourceTypeDTO) {
         ResourceTypeDTO createdType = resourceTypeService.createResourceType(resourceTypeDTO);
@@ -65,6 +63,7 @@ public class ResourceTypeController {
      * Update existing resource type
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update resource type", description = "Updates an existing resource type")
     public ResponseEntity<ResourceTypeDTO> updateResourceType(
             @PathVariable Long id, 
@@ -79,6 +78,7 @@ public class ResourceTypeController {
      * Delete resource type
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete resource type", description = "Deletes an existing resource type")
     public ResponseEntity<Object> deleteResourceType(@PathVariable Long id) {
         return resourceTypeService.deleteResourceType(id) ? 
