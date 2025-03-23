@@ -15,6 +15,7 @@ import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
 
 /**
  * Event entity representing resource bookings
+ * Now using Keycloak ID instead of User entity
  */
 @Entity
 @Table(name = "events")
@@ -46,9 +47,21 @@ public class Event extends AuditableEntity {
     @JoinColumn(name = "resource_id", nullable = false)
     private Resource resource;
 
-    @ManyToOne
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @NotBlank
+    @Column(name = "keycloak_id")
+    private String keycloakId; // Keycloak user ID instead of User entity reference
+    
+    // User name accessor methods for backward compatibility
+    @Transient
+    private String userName; // Not stored in DB, populated from Keycloak
+    
+    public String getUserName() {
+        return userName;
+    }
+    
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
     
     /**
      * Pre-persist hook to ensure start and end dates have correct timezone

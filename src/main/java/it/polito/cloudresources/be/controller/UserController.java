@@ -22,7 +22,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * REST API controller for managing users
+ * REST API controller for managing users (now fully integrated with Keycloak)
  */
 @RestController
 @RequestMapping("/users")
@@ -52,7 +52,7 @@ public class UserController {
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Get user by ID", description = "Retrieves a specific user by their ID (Admin only)")
-    public ResponseEntity<UserDTO> getUserById(@PathVariable Long id) {
+    public ResponseEntity<UserDTO> getUserById(@PathVariable String id) {
         return userService.getUserById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -65,7 +65,7 @@ public class UserController {
     @Operation(summary = "Get current user", description = "Retrieves the profile of the currently authenticated user")
     public ResponseEntity<UserDTO> getCurrentUser(Authentication authentication) {
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-        return userService.getUserByKeycloakId(keycloakId)
+        return userService.getUserById(keycloakId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -81,6 +81,7 @@ public class UserController {
             // Extract basic data to check
             String username = (String) userData.get("username");
             String email = (String) userData.get("email");
+            String password = (String) userData.get("password");
             
             // Check if username already exists
             if (userService.getUserByUsername(username).isPresent()) {
@@ -98,28 +99,29 @@ public class UserController {
                 );
             }
             
-            // Check with Keycloak as well (double check)
-            if (keycloakService.getUserByUsername(username).isPresent()) {
-                return utils.createErrorResponse(
-                    HttpStatus.CONFLICT, 
-                    "Username already exists in authentication system: " + username
-                );
+            // Build the user DTO
+            UserDTO userDTO = new UserDTO();
+            userDTO.setUsername(username);
+            userDTO.setEmail(email);
+            userDTO.setFirstName((String) userData.get("firstName"));
+            userDTO.setLastName((String) userData.get("lastName"));
+            
+            // Set avatar
+            if (userData.containsKey("avatar")) {
+                userDTO.setAvatar((String) userData.get("avatar"));
+            } else {
+                userDTO.setAvatar(generateAvatarFromName(userDTO.getFirstName(), userDTO.getLastName()));
             }
             
-            if (keycloakService.getUserByEmail(email).isPresent()) {
-                return utils.createErrorResponse(
-                    HttpStatus.CONFLICT, 
-                    "Email already exists in authentication system: " + email
-                );
+            // Set roles
+            @SuppressWarnings("unchecked")
+            List<String> roles = (List<String>) userData.get("roles");
+            if (roles != null) {
+                userDTO.setRoles(roles.stream().map(String::toUpperCase).collect(Collectors.toSet()));
             }
             
-            String keycloakId = createUserInKeycloak(userData);
-            if (keycloakId == null) {
-                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create user in Keycloak");
-            }
-            
-            UserDTO userDTO = buildUserDTOFromData(userData, keycloakId);
-            UserDTO createdUser = userService.createUser(userDTO);
+            // Create user
+            UserDTO createdUser = userService.createUser(userDTO, password);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
         } catch (IllegalArgumentException e) {
             // Handle validation errors
@@ -136,7 +138,7 @@ public class UserController {
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update user", description = "Updates an existing user (Admin only)")
-    public ResponseEntity<Object> updateUser(@PathVariable Long id, @RequestBody Map<String, Object> userData) {
+    public ResponseEntity<Object> updateUser(@PathVariable String id, @RequestBody Map<String, Object> userData) {
         try {
             Optional<UserDTO> existingUserOpt = userService.getUserById(id);
             if (existingUserOpt.isEmpty()) {
@@ -144,13 +146,9 @@ public class UserController {
             }
             
             UserDTO existingUser = existingUserOpt.get();
-            boolean keycloakUpdated = keycloakService.updateUser(existingUser.getKeycloakId(), userData);
-            if (!keycloakUpdated) {
-                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update user in Keycloak");
-            }
+            UserDTO updatedUserDTO = buildUserDTOForUpdate(userData, existingUser);
             
-            UserDTO userDTO = buildUserDTOForUpdate(id, userData, existingUser);
-            UserDTO updatedUser = userService.updateUser(id, userDTO);
+            UserDTO updatedUser = userService.updateUser(id, updatedUserDTO);
             return ResponseEntity.ok(updatedUser);
         } catch (Exception e) {
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update user: " + e.getMessage());
@@ -166,7 +164,7 @@ public class UserController {
     public ResponseEntity<Object> updateProfile(@RequestBody Map<String, Object> userData, Authentication authentication) {
         try {
             String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-            Optional<UserDTO> existingUserOpt = userService.getUserByKeycloakId(keycloakId);
+            Optional<UserDTO> existingUserOpt = userService.getUserById(keycloakId);
             
             if (existingUserOpt.isEmpty()) {
                 return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
@@ -186,14 +184,9 @@ public class UserController {
             }
             
             UserDTO existingUser = existingUserOpt.get();
-            Map<String, Object> keycloakUpdate = extractKeycloakUpdateFields(userData);
+            UserDTO updatedUserDTO = buildUserDTOForProfileUpdate(userData, existingUser);
             
-            if (!keycloakUpdate.isEmpty() && !keycloakService.updateUser(keycloakId, keycloakUpdate)) {
-                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update user in Keycloak");
-            }
-            
-            UserDTO userDTO = buildUserDTOForProfileUpdate(userData, existingUser);
-            UserDTO updatedUser = userService.updateUser(existingUser.getId(), userDTO);
+            UserDTO updatedUser = userService.updateUser(keycloakId, updatedUserDTO);
             return ResponseEntity.ok(updatedUser);
         } catch (Exception e) {
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update profile: " + e.getMessage());
@@ -206,23 +199,17 @@ public class UserController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete user", description = "Deletes an existing user (Admin only)")
-    public ResponseEntity<Object> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<Object> deleteUser(@PathVariable String id) {
         try {
             Optional<UserDTO> userOpt = userService.getUserById(id);
             if (userOpt.isEmpty()) {
                 return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
             }
             
-            UserDTO user = userOpt.get();
-            if (!keycloakService.deleteUser(user.getKeycloakId())) {
-                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, 
-                        "Failed to delete user from Keycloak");
-            }
-            
             boolean deleted = userService.deleteUser(id);
             if (!deleted) {
                 return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, 
-                        "Failed to delete user from database");
+                        "Failed to delete user");
             }
             
             return utils.createSuccessResponse("User deleted successfully");
@@ -242,54 +229,6 @@ public class UserController {
         List<UserDTO> users = userService.getUsersByRole(role.toUpperCase());
         return ResponseEntity.ok(users);
     }
-    
-    // Helper methods
-    
-    private String createUserInKeycloak(Map<String, Object> userData) {
-        // Validate required fields
-        String username = (String) userData.get("username");
-        String email = (String) userData.get("email");
-        String firstName = (String) userData.get("firstName");
-        String lastName = (String) userData.get("lastName");
-        String password = (String) userData.get("password");
-        
-        if (username == null || username.trim().isEmpty()) {
-            throw new IllegalArgumentException("Username is required");
-        }
-        
-        if (email == null || email.trim().isEmpty()) {
-            throw new IllegalArgumentException("Email is required");
-        }
-        
-        if (firstName == null || firstName.trim().isEmpty()) {
-            throw new IllegalArgumentException("First name is required");
-        }
-        
-        if (lastName == null || lastName.trim().isEmpty()) {
-            throw new IllegalArgumentException("Last name is required");
-        }
-        
-        if (password == null || password.trim().isEmpty()) {
-            throw new IllegalArgumentException("Password is required");
-        }
-        
-        // Get roles, with validation
-        @SuppressWarnings("unchecked")
-        List<String> roles = (List<String>) userData.get("roles");
-        
-        if (roles == null || roles.isEmpty()) {
-            throw new IllegalArgumentException("At least one role must be specified");
-        }
-        
-        // Attempt to create the user in Keycloak
-        String keycloakId = keycloakService.createUser(username, email, firstName, lastName, password, roles);
-        
-        if (keycloakId == null) {
-            throw new RuntimeException("Failed to create user in authentication system. This could be due to an existing username or email, invalid role, or a system error.");
-        }
-        
-        return keycloakId;
-    }
 
     /**
      * Update current user's SSH key
@@ -302,15 +241,21 @@ public class UserController {
             String sshPublicKey = request.get("sshPublicKey");
             String keycloakId = utils.getCurrentUserKeycloakId(authentication);
             
-            Optional<UserDTO> existingUserOpt = userService.getUserByKeycloakId(keycloakId);
+            Optional<UserDTO> existingUserOpt = userService.getUserById(keycloakId);
             if (existingUserOpt.isEmpty()) {
                 return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
             }
             
-            UserDTO existingUser = existingUserOpt.get();
-            existingUser.setSshPublicKey(sshPublicKey);
+            // Validate SSH key
+            if (sshPublicKey != null && !sshPublicKey.trim().isEmpty()) {
+                sshPublicKey = sshKeyValidator.formatSshKey(sshPublicKey);
+                if (!sshKeyValidator.isValidSshPublicKey(sshPublicKey)) {
+                    return utils.createErrorResponse(HttpStatus.BAD_REQUEST, 
+                        "Invalid SSH public key format. Please provide a valid SSH key.");
+                }
+            }
             
-            UserDTO updatedUser = userService.updateUser(existingUser.getId(), existingUser);
+            UserDTO updatedUser = userService.updateUserSshKey(keycloakId, sshPublicKey);
             return ResponseEntity.ok(updatedUser);
         } catch (Exception e) {
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update SSH key: " + e.getMessage());
@@ -326,15 +271,10 @@ public class UserController {
     public ResponseEntity<Object> getSshKey(Authentication authentication) {
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
         
-        Optional<UserDTO> existingUserOpt = userService.getUserByKeycloakId(keycloakId);
-        if (existingUserOpt.isEmpty()) {
-            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
-        }
-        
-        UserDTO existingUser = existingUserOpt.get();
+        Optional<String> sshKey = userService.getUserSshKey(keycloakId);
         
         Map<String, String> response = new HashMap<>();
-        response.put("sshPublicKey", existingUser.getSshPublicKey());
+        response.put("sshPublicKey", sshKey.orElse(null));
         
         return ResponseEntity.ok(response);
     }
@@ -349,53 +289,29 @@ public class UserController {
         try {
             String keycloakId = utils.getCurrentUserKeycloakId(authentication);
             
-            Optional<UserDTO> existingUserOpt = userService.getUserByKeycloakId(keycloakId);
-            if (existingUserOpt.isEmpty()) {
-                return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
+            boolean deleted = userService.deleteUserSshKey(keycloakId);
+            if (!deleted) {
+                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete SSH key");
             }
             
-            UserDTO existingUser = existingUserOpt.get();
-            existingUser.setSshPublicKey(null);
-            
-            userService.updateUser(existingUser.getId(), existingUser);
             return utils.createSuccessResponse("SSH key deleted successfully");
         } catch (Exception e) {
             return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete SSH key: " + e.getMessage());
         }
     }
     
-    private UserDTO buildUserDTOFromData(Map<String, Object> userData, String keycloakId) {
-        UserDTO userDTO = new UserDTO();
-        userDTO.setUsername((String) userData.get("username"));
-        userDTO.setFirstName((String) userData.get("firstName"));
-        userDTO.setLastName((String) userData.get("lastName"));
-        userDTO.setEmail((String) userData.get("email"));
-        userDTO.setKeycloakId(keycloakId);
-        
-        @SuppressWarnings("unchecked")
-        List<String> roles = (List<String>) userData.get("roles");
-        userDTO.setRoles(roles.stream().map(String::toUpperCase).collect(Collectors.toSet()));
-        
-        // Set avatar
-        if (userData.containsKey("avatar")) {
-            userDTO.setAvatar((String) userData.get("avatar"));
-        } else {
-            userDTO.setAvatar(generateAvatarFromName(userDTO.getFirstName(), userDTO.getLastName()));
-        }
-        
-        return userDTO;
-    }
+    // Helper methods
     
-    private UserDTO buildUserDTOForUpdate(Long id, Map<String, Object> userData, UserDTO existingUser) {
+    private UserDTO buildUserDTOForUpdate(Map<String, Object> userData, UserDTO existingUser) {
         UserDTO userDTO = new UserDTO();
-        userDTO.setId(id);
-        userDTO.setKeycloakId(existingUser.getKeycloakId());
+        userDTO.setId(existingUser.getId());
         
         userDTO.setUsername(getStringOrDefault(userData, "username", existingUser.getUsername()));
         userDTO.setFirstName(getStringOrDefault(userData, "firstName", existingUser.getFirstName()));
         userDTO.setLastName(getStringOrDefault(userData, "lastName", existingUser.getLastName()));
         userDTO.setEmail(getStringOrDefault(userData, "email", existingUser.getEmail()));
         userDTO.setAvatar(getStringOrDefault(userData, "avatar", existingUser.getAvatar()));
+        userDTO.setSshPublicKey(getStringOrDefault(userData, "sshPublicKey", existingUser.getSshPublicKey()));
         
         if (userData.containsKey("roles")) {
             @SuppressWarnings("unchecked")
@@ -411,7 +327,6 @@ public class UserController {
     private UserDTO buildUserDTOForProfileUpdate(Map<String, Object> userData, UserDTO existingUser) {
         UserDTO userDTO = new UserDTO();
         userDTO.setId(existingUser.getId());
-        userDTO.setKeycloakId(existingUser.getKeycloakId());
         userDTO.setUsername(existingUser.getUsername()); // Username can't be changed by the user
         
         userDTO.setFirstName(getStringOrDefault(userData, "firstName", existingUser.getFirstName()));
@@ -422,28 +337,6 @@ public class UserController {
         userDTO.setRoles(existingUser.getRoles()); // Users cannot change their own roles
         
         return userDTO;
-    }
-    
-    private Map<String, Object> extractKeycloakUpdateFields(Map<String, Object> userData) {
-        Map<String, Object> keycloakUpdate = new java.util.HashMap<>();
-        
-        if (userData.containsKey("firstName")) {
-            keycloakUpdate.put("firstName", userData.get("firstName"));
-        }
-        
-        if (userData.containsKey("lastName")) {
-            keycloakUpdate.put("lastName", userData.get("lastName"));
-        }
-        
-        if (userData.containsKey("email")) {
-            keycloakUpdate.put("email", userData.get("email"));
-        }
-        
-        if (userData.containsKey("password")) {
-            keycloakUpdate.put("password", userData.get("password"));
-        }
-        
-        return keycloakUpdate;
     }
     
     private String generateAvatarFromName(String firstName, String lastName) {

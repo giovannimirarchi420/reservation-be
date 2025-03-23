@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * Notification entity for storing system notifications to users
+ * Now using Keycloak IDs instead of User entities
  */
 @Entity
 @Table(name = "notifications")
@@ -31,7 +32,7 @@ public class Notification extends AuditableEntity {
 
     private boolean read = false;
 
-    @ManyToOne
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @NotBlank
+    @Column(name = "keycloak_id")
+    private String keycloakId; // Keycloak user ID instead of User entity reference
 }

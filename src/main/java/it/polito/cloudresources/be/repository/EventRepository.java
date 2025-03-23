@@ -2,7 +2,6 @@ package it.polito.cloudresources.be.repository;
 
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
-import it.polito.cloudresources.be.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,19 +12,14 @@ import java.util.List;
 
 /**
  * Repository for Event entity operations
+ * Now using Keycloak IDs instead of User entities
  */
 @Repository
 public interface EventRepository extends JpaRepository<Event, Long> {
     /**
-     * Find events by user
-     */
-    List<Event> findByUser(User user);
-    
-    /**
      * Find events by user's Keycloak ID
      */
-    @Query("SELECT e FROM Event e WHERE e.user.keycloakId = :keycloakId")
-    List<Event> findByUserKeycloakId(@Param("keycloakId") String keycloakId);
+    List<Event> findByKeycloakId(String keycloakId);
 
     /**
      * Find events by resource
@@ -36,12 +30,6 @@ public interface EventRepository extends JpaRepository<Event, Long> {
      * Find events by resource ID
      */
     List<Event> findByResourceId(Long resourceId);
-
-    /**
-     * Find events by user ID (local DB ID)
-     */
-    @Query("SELECT e FROM Event e WHERE e.user.id = :userId")
-    List<Event> findByUserId(@Param("userId") Long userId);
 
     /**
      * Find events within a date range

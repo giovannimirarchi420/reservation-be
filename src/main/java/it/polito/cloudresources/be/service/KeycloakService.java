@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.keycloak.admin.client.resource.RealmResource;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
@@ -18,12 +19,15 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Service for interacting with Keycloak
+ * Enhanced service for interacting with Keycloak as the single source of truth for user data
  */
 @Service
 @Profile("!dev") // Active in all profiles except dev
 @Slf4j
 public class KeycloakService {
+
+    public static final String ATTR_SSH_KEY = "ssh_key";
+    public static final String ATTR_AVATAR = "avatar";
 
     @Value("${keycloak.auth-server-url}")
     private String authServerUrl;
@@ -116,13 +120,11 @@ public class KeycloakService {
     }
 
     /**
-     * Create a new user in Keycloak
-     */
-    /**
-     * Create a new user in Keycloak
+     * Create a new user in Keycloak with all attributes
      */
     @Transactional
-    public String createUser(String username, String email, String firstName, String lastName, String password, List<String> roles) {
+    public String createUser(String username, String email, String firstName, String lastName, 
+                             String password, List<String> roles, String sshKey, String avatar) {
         try {
             log.debug("Attempting to create user: username={}, email={}, firstName={}, lastName={}", 
                     username, email, firstName, lastName);
@@ -133,6 +135,15 @@ public class KeycloakService {
             // Set ONLY the basic fields, avoiding any problematic fields
             Map<String, List<String>> attributes = new HashMap<>();
             
+            // Add SSH key and avatar as attributes if provided
+            if (sshKey != null && !sshKey.isEmpty()) {
+                attributes.put(ATTR_SSH_KEY, Collections.singletonList(sshKey));
+            }
+            
+            if (avatar != null && !avatar.isEmpty()) {
+                attributes.put(ATTR_AVATAR, Collections.singletonList(avatar));
+            }
+            
             user.setUsername(username);
             user.setEmail(email);
             user.setFirstName(firstName);
@@ -140,6 +151,7 @@ public class KeycloakService {
             user.setEnabled(true);
             user.setEmailVerified(true);
             user.setAttributes(attributes);            
+            
             // Verify that all necessary fields are present
             if (username == null || username.trim().isEmpty()) {
                 log.error("User creation failed: username missing or empty");
@@ -224,13 +236,23 @@ public class KeycloakService {
             return null;
         }
     }
-   /**
+
+    /**
+     * Create a new user in Keycloak
+     */
+    @Transactional
+    public String createUser(String username, String email, String firstName, String lastName, String password, List<String> roles) {
+        return createUser(username, email, firstName, lastName, password, roles, null, null);
+    }
+
+    /**
      * Update an existing user in Keycloak
      */
     @Transactional
     public boolean updateUser(String userId, Map<String, Object> attributes) {
         try {
-            UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
+            UserResource userResource = getRealmResource().users().get(userId);
+            UserRepresentation user = userResource.toRepresentation();
 
             if (attributes.containsKey("email")) {
                 user.setEmail((String) attributes.get("email"));
@@ -252,8 +274,34 @@ public class KeycloakService {
                 user.setEnabled((Boolean) attributes.get("enabled"));
             }
 
+            // Handle SSH key and avatar attributes
+            Map<String, List<String>> userAttributes = user.getAttributes();
+            if (userAttributes == null) {
+                userAttributes = new HashMap<>();
+            }
+
+            if (attributes.containsKey(ATTR_SSH_KEY)) {
+                String sshKey = (String) attributes.get(ATTR_SSH_KEY);
+                if (sshKey != null && !sshKey.isEmpty()) {
+                    userAttributes.put(ATTR_SSH_KEY, Collections.singletonList(sshKey));
+                } else {
+                    userAttributes.remove(ATTR_SSH_KEY);
+                }
+            }
+
+            if (attributes.containsKey(ATTR_AVATAR)) {
+                String avatar = (String) attributes.get(ATTR_AVATAR);
+                if (avatar != null && !avatar.isEmpty()) {
+                    userAttributes.put(ATTR_AVATAR, Collections.singletonList(avatar));
+                } else {
+                    userAttributes.remove(ATTR_AVATAR);
+                }
+            }
+
+            user.setAttributes(userAttributes);
+
             // Update basic user info first
-            getRealmResource().users().get(userId).update(user);
+            userResource.update(user);
             log.debug("Basic user info updated for user: {}", userId);
 
             // Update password if provided
@@ -263,7 +311,7 @@ public class KeycloakService {
                 credential.setValue((String) attributes.get("password"));
                 credential.setTemporary(false);
 
-                getRealmResource().users().get(userId).resetPassword(credential);
+                userResource.resetPassword(credential);
                 log.debug("Password updated for user: {}", userId);
             }
 
@@ -275,7 +323,6 @@ public class KeycloakService {
                     log.debug("Updating roles for user {}: {}", userId, roles);
 
                     // Get user resource and roles
-                    var userResource = getRealmResource().users().get(userId);
                     var userRolesResource = userResource.roles();
                     
                     // Get current assigned realm roles
@@ -330,6 +377,7 @@ public class KeycloakService {
             return false;
         }
     }
+
     /**
      * Delete a user from Keycloak
      */
@@ -355,6 +403,41 @@ public class KeycloakService {
             log.error("Error fetching user roles from Keycloak", e);
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Get specific attribute for a user
+     */
+    public Optional<String> getUserAttribute(String userId, String attributeName) {
+        try {
+            UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
+            Map<String, List<String>> attributes = user.getAttributes();
+            
+            if (attributes != null && attributes.containsKey(attributeName)) {
+                List<String> values = attributes.get(attributeName);
+                if (!values.isEmpty()) {
+                    return Optional.of(values.get(0));
+                }
+            }
+            return Optional.empty();
+        } catch (Exception e) {
+            log.error("Error fetching user attribute from Keycloak", e);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Get SSH key for a user
+     */
+    public Optional<String> getUserSshKey(String userId) {
+        return getUserAttribute(userId, ATTR_SSH_KEY);
+    }
+
+    /**
+     * Get avatar for a user
+     */
+    public Optional<String> getUserAvatar(String userId) {
+        return getUserAttribute(userId, ATTR_AVATAR);
     }
 
     /**
@@ -403,6 +486,29 @@ public class KeycloakService {
                     .orElse(Collections.emptyList());
         } catch (Exception e) {
             log.error("Error fetching client roles from Keycloak", e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Find users by role
+     */
+    public List<UserRepresentation> getUsersByRole(String roleName) {
+        try {
+            List<UserRepresentation> allUsers = getUsers();
+            List<UserRepresentation> usersWithRole = new ArrayList<>();
+            
+            for (UserRepresentation user : allUsers) {
+                List<String> userRoles = getUserRoles(user.getId());
+                if (userRoles.contains(roleName) || userRoles.contains(roleName.toUpperCase()) || 
+                    userRoles.contains(roleName.toLowerCase())) {
+                    usersWithRole.add(user);
+                }
+            }
+            
+            return usersWithRole;
+        } catch (Exception e) {
+            log.error("Error finding users by role from Keycloak", e);
             return Collections.emptyList();
         }
     }

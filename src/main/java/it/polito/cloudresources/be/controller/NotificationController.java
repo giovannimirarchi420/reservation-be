@@ -5,7 +5,6 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.NotificationDTO;
 import it.polito.cloudresources.be.service.NotificationService;
-import it.polito.cloudresources.be.service.UserService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,6 +18,7 @@ import java.util.List;
 
 /**
  * REST API controller for managing user notifications
+ * Now using Keycloak IDs instead of User entities
  */
 @RestController
 @RequestMapping("/notifications")
@@ -28,7 +28,6 @@ import java.util.List;
 public class NotificationController {
 
     private final NotificationService notificationService;
-    private final UserService userService;
     private final ControllerUtils utils;
 
     /**
@@ -41,20 +40,16 @@ public class NotificationController {
             Authentication authentication) {
         
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-        Long userId = userService.getUserIdByKeycloakId(keycloakId);
         
-        if (userId == null) {
-            //Returning 404 here, would compromise the FE at the first startup, when no user
-            //are configured on internal DB (just on keycloak thanks to the resource-management-realm.json)
-            //TODO: Manage better this case
+        if (keycloakId == null) {
             return ResponseEntity.ok(Arrays.asList());
         }
         
         List<NotificationDTO> notifications;
         if (unreadOnly) {
-            notifications = notificationService.getUnreadNotifications(userId);
+            notifications = notificationService.getUnreadNotifications(keycloakId);
         } else {
-            notifications = notificationService.getUserNotifications(userId);
+            notifications = notificationService.getUserNotifications(keycloakId);
         }
         
         return ResponseEntity.ok(notifications);
@@ -67,13 +62,12 @@ public class NotificationController {
     @Operation(summary = "Get unread count", description = "Gets the count of unread notifications for the current user")
     public ResponseEntity<Integer> getUnreadCount(Authentication authentication) {
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-        Long userId = userService.getUserIdByKeycloakId(keycloakId);
         
-        if (userId == null) {
-            return ResponseEntity.notFound().build();
+        if (keycloakId == null) {
+            return ResponseEntity.ok(0);
         }
         
-        int count = notificationService.getUnreadNotificationCount(userId);
+        int count = notificationService.getUnreadNotificationCount(keycloakId);
         return ResponseEntity.ok(count);
     }
 
@@ -87,13 +81,12 @@ public class NotificationController {
             Authentication authentication) {
         
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-        Long userId = userService.getUserIdByKeycloakId(keycloakId);
         
-        if (userId == null) {
+        if (keycloakId == null) {
             return ResponseEntity.notFound().build();
         }
         
-        return notificationService.markAsRead(id, userId)
+        return notificationService.markAsRead(id, keycloakId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -105,13 +98,12 @@ public class NotificationController {
     @Operation(summary = "Mark all as read", description = "Marks all notifications as read for the current user")
     public ResponseEntity<Object> markAllAsRead(Authentication authentication) {
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-        Long userId = userService.getUserIdByKeycloakId(keycloakId);
         
-        if (userId == null) {
+        if (keycloakId == null) {
             return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
         }
         
-        notificationService.markAllAsRead(userId);
+        notificationService.markAllAsRead(keycloakId);
         return utils.createSuccessResponse("All notifications marked as read");
     }
 
@@ -125,13 +117,12 @@ public class NotificationController {
             Authentication authentication) {
         
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-        Long userId = userService.getUserIdByKeycloakId(keycloakId);
         
-        if (userId == null) {
+        if (keycloakId == null) {
             return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
         }
         
-        boolean deleted = notificationService.deleteNotification(id, userId);
+        boolean deleted = notificationService.deleteNotification(id, keycloakId);
         
         if (deleted) {
             return utils.createSuccessResponse("Notification deleted successfully");
@@ -141,13 +132,13 @@ public class NotificationController {
     }
 
     /**
-     * Send notification to a user (admin only)
+     * Send notification to a user by Keycloak ID (admin only)
      */
     @PostMapping("/send")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Send notification", description = "Sends a notification to a specific user (Admin only)")
     public ResponseEntity<NotificationDTO> sendNotification(
-            @RequestParam Long userId,
+            @RequestParam String userId,
             @RequestParam String message,
             @RequestParam(required = false, defaultValue = "INFO") String type) {
         

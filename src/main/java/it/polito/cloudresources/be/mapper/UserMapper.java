@@ -1,55 +1,64 @@
 package it.polito.cloudresources.be.mapper;
 
 import it.polito.cloudresources.be.dto.UserDTO;
-import it.polito.cloudresources.be.model.User;
+import it.polito.cloudresources.be.service.KeycloakService;
+import lombok.RequiredArgsConstructor;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
- * Mapper for converting between User and UserDTO objects
+ * Mapper for converting between Keycloak UserRepresentation and UserDTO objects
  */
 @Component
-public class UserMapper implements EntityMapper<UserDTO, User> {
+@RequiredArgsConstructor
+public class UserMapper {
     
-    @Override
-    public User toEntity(UserDTO dto) {
-        if (dto == null) {
-            return null;
-        }
-        
-        User user = new User();
-        user.setId(dto.getId());
-        user.setUsername(dto.getUsername());
-        user.setFirstName(dto.getFirstName());
-        user.setLastName(dto.getLastName());
-        user.setEmail(dto.getEmail());
-        user.setAvatar(dto.getAvatar());
-        user.setKeycloakId(dto.getKeycloakId());
-        user.setSshPublicKey(dto.getSshPublicKey());
-        
-        if (dto.getRoles() != null) {
-            user.setRoles(dto.getRoles());
-        }
-        
-        return user;
-    }
+    private final KeycloakService keycloakService;
     
-    @Override
-    public UserDTO toDto(User entity) {
-        if (entity == null) {
+    /**
+     * Convert from UserRepresentation to UserDTO
+     */
+    public UserDTO toDto(UserRepresentation userRepresentation) {
+        if (userRepresentation == null) {
             return null;
         }
         
         UserDTO dto = new UserDTO();
-        dto.setId(entity.getId());
-        dto.setUsername(entity.getUsername());
-        dto.setFirstName(entity.getFirstName());
-        dto.setLastName(entity.getLastName());
-        dto.setEmail(entity.getEmail());
-        dto.setAvatar(entity.getAvatar());
-        dto.setKeycloakId(entity.getKeycloakId());
-        dto.setSshPublicKey(entity.getSshPublicKey());
-        dto.setRoles(entity.getRoles());
+        dto.setId(userRepresentation.getId());
+        dto.setUsername(userRepresentation.getUsername());
+        dto.setFirstName(userRepresentation.getFirstName());
+        dto.setLastName(userRepresentation.getLastName());
+        dto.setEmail(userRepresentation.getEmail());
+        
+        // Get roles
+        List<String> roles = keycloakService.getUserRoles(userRepresentation.getId());
+        dto.setRoles(new HashSet<>(roles));
+
+        // Get avatar
+        keycloakService.getUserAvatar(userRepresentation.getId())
+            .ifPresent(dto::setAvatar);
+
+        // Get SSH key
+        keycloakService.getUserSshKey(userRepresentation.getId())
+            .ifPresent(dto::setSshPublicKey);
         
         return dto;
+    }
+    
+    /**
+     * Convert a list of UserRepresentations to a list of UserDTOs
+     */
+    public List<UserDTO> toDto(List<UserRepresentation> userRepresentations) {
+        if (userRepresentations == null) {
+            return null;
+        }
+        
+        return userRepresentations.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 }

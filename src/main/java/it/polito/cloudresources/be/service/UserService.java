@@ -2,38 +2,38 @@ package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.UserDTO;
 import it.polito.cloudresources.be.mapper.UserMapper;
-import it.polito.cloudresources.be.model.User;
-import it.polito.cloudresources.be.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Optional;
-
+import java.util.*;
 /**
- * Service for user operations
+ * Service for user operations, now using Keycloak as the source of truth
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserService {
 
-    private final UserRepository userRepository;
-    private final UserMapper userMapper;
+    private final KeycloakService keycloakService;
     private final AuditLogService auditLogService;
+    private final UserMapper userMapper;
+
+    // UserMapper è ora iniettato per gestire la conversione da UserRepresentation a UserDTO
 
     /**
      * Get all users
      */
     public List<UserDTO> getAllUsers() {
-        return userMapper.toDto(userRepository.findAll());
+        return userMapper.toDto(keycloakService.getUsers());
     }
 
     /**
-     * Get user by ID
+     * Get user by ID (Keycloak ID)
      */
-    public Optional<UserDTO> getUserById(Long id) {
-        return userRepository.findById(id)
+    public Optional<UserDTO> getUserById(String id) {
+        return keycloakService.getUserById(id)
                 .map(userMapper::toDto);
     }
 
@@ -41,7 +41,7 @@ public class UserService {
      * Get user by email
      */
     public Optional<UserDTO> getUserByEmail(String email) {
-        return userRepository.findByEmail(email)
+        return keycloakService.getUserByEmail(email)
                 .map(userMapper::toDto);
     }
     
@@ -49,93 +49,153 @@ public class UserService {
      * Get user by username
      */
     public Optional<UserDTO> getUserByUsername(String username) {
-        return userRepository.findByUsername(username)
+        return keycloakService.getUserByUsername(username)
                 .map(userMapper::toDto);
-    }
-
-    /**
-     * Get user by Keycloak ID
-     */
-    public Optional<UserDTO> getUserByKeycloakId(String keycloakId) {
-        return userRepository.findByKeycloakId(keycloakId)
-                .map(userMapper::toDto);
-    }
-
-    /**
-     * Get user ID by Keycloak ID
-     */
-    public Long getUserIdByKeycloakId(String keycloakId) {
-        return userRepository.findByKeycloakId(keycloakId)
-                .map(User::getId)
-                .orElse(null);
     }
 
     /**
      * Create new user
      */
-    @Transactional
-    public UserDTO createUser(UserDTO userDTO) {
-        User user = userMapper.toEntity(userDTO);
-        User savedUser = userRepository.save(user);
+    public UserDTO createUser(UserDTO userDTO, String password) {
+        // Collect roles
+        List<String> rolesList = userDTO.getRoles() != null ? 
+                new ArrayList<>(userDTO.getRoles()) : new ArrayList<>();
+                
+        // Create user in Keycloak
+        String userId = keycloakService.createUser(
+                userDTO.getUsername(),
+                userDTO.getEmail(),
+                userDTO.getFirstName(),
+                userDTO.getLastName(),
+                password,
+                rolesList,
+                userDTO.getSshPublicKey(),
+                userDTO.getAvatar()
+        );
+        
+        if (userId == null) {
+            throw new RuntimeException("Failed to create user in Keycloak");
+        }
         
         // Log the action
         auditLogService.logAdminAction("User", "create", 
-                "Created user: " + savedUser.getUsername());
+                "Created user: " + userDTO.getUsername());
                 
-        return userMapper.toDto(savedUser);
+        // Retrieve and return the newly created user
+        return keycloakService.getUserById(userId)
+                .map(userMapper::toDto)
+                .orElseThrow(() -> new RuntimeException("User created but could not be retrieved"));
     }
 
     /**
      * Update existing user
      */
-    @Transactional
-    public UserDTO updateUser(Long id, UserDTO userDTO) {
-        User existingUser = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+    public UserDTO updateUser(String id, UserDTO userDTO) {
+        Map<String, Object> attributes = new HashMap<>();
         
-        // Apply updates but preserve ID
-        User updatedUser = userMapper.toEntity(userDTO);
-        updatedUser.setId(id);
+        // Only update fields that are present in the DTO
+        if (userDTO.getUsername() != null) {
+            attributes.put("username", userDTO.getUsername());
+        }
         
-        // Preserve related entities that aren't in the DTO
-        updatedUser.setEvents(existingUser.getEvents());
+        if (userDTO.getEmail() != null) {
+            attributes.put("email", userDTO.getEmail());
+        }
         
-        User savedUser = userRepository.save(updatedUser);
+        if (userDTO.getFirstName() != null) {
+            attributes.put("firstName", userDTO.getFirstName());
+        }
+        
+        if (userDTO.getLastName() != null) {
+            attributes.put("lastName", userDTO.getLastName());
+        }
+        
+        if (userDTO.getAvatar() != null) {
+            attributes.put(KeycloakService.ATTR_AVATAR, userDTO.getAvatar());
+        }
+        
+        if (userDTO.getSshPublicKey() != null) {
+            attributes.put(KeycloakService.ATTR_SSH_KEY, userDTO.getSshPublicKey());
+        }
+        
+        if (userDTO.getRoles() != null) {
+            attributes.put("roles", new ArrayList<>(userDTO.getRoles()));
+        }
+        
+        boolean updated = keycloakService.updateUser(id, attributes);
+        if (!updated) {
+            throw new RuntimeException("Failed to update user in Keycloak");
+        }
         
         // Log the action
         auditLogService.logAdminAction("User", "update", 
-                "Updated user: " + savedUser.getUsername());
+                "Updated user: " + userDTO.getUsername());
                 
-        return userMapper.toDto(savedUser);
+        // Retrieve and return the updated user
+        return keycloakService.getUserById(id)
+                .map(userMapper::toDto)
+                .orElseThrow(() -> new RuntimeException("User updated but could not be retrieved"));
     }
 
     /**
      * Delete user
      */
-    @Transactional
-    public boolean deleteUser(Long id) {
-        if (!userRepository.existsById(id)) {
-            return false;
-        }
-        
+    public boolean deleteUser(String id) {
         // Get username for logging before deletion
-        String username = userRepository.findById(id)
-                .map(User::getUsername)
+        String username = keycloakService.getUserById(id)
+                .map(UserRepresentation::getUsername)
                 .orElse("Unknown");
         
-        userRepository.deleteById(id);
+        boolean deleted = keycloakService.deleteUser(id);
         
-        // Log the action
-        auditLogService.logAdminAction("User", "delete", 
-                "Deleted user: " + username);
+        if (deleted) {
+            // Log the action
+            auditLogService.logAdminAction("User", "delete", 
+                    "Deleted user: " + username);
+        }
         
-        return true;
+        return deleted;
     }
 
     /**
      * Get users by role
      */
     public List<UserDTO> getUsersByRole(String role) {
-        return userMapper.toDto(userRepository.findByRolesContaining(role));
+        return userMapper.toDto(keycloakService.getUsersByRole(role));
+    }
+    
+    /**
+     * Update user SSH key
+     */
+    public UserDTO updateUserSshKey(String id, String sshKey) {
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put(KeycloakService.ATTR_SSH_KEY, sshKey);
+        
+        boolean updated = keycloakService.updateUser(id, attributes);
+        if (!updated) {
+            throw new RuntimeException("Failed to update user SSH key in Keycloak");
+        }
+        
+        // Retrieve and return the updated user
+        return keycloakService.getUserById(id)
+                .map(userMapper::toDto)
+                .orElseThrow(() -> new RuntimeException("User SSH key updated but user could not be retrieved"));
+    }
+    
+    /**
+     * Get user SSH key
+     */
+    public Optional<String> getUserSshKey(String id) {
+        return keycloakService.getUserSshKey(id);
+    }
+    
+    /**
+     * Delete user SSH key
+     */
+    public boolean deleteUserSshKey(String id) {
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put(KeycloakService.ATTR_SSH_KEY, null); // Set to null to remove
+        
+        return keycloakService.updateUser(id, attributes);
     }
 }

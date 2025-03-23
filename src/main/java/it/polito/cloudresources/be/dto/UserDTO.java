@@ -1,6 +1,5 @@
 package it.polito.cloudresources.be.dto;
 
-
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -11,13 +10,13 @@ import lombok.NoArgsConstructor;
 import java.util.Set;
 
 /**
- * DTO for User data transfer
+ * DTO for User data transfer, now based entirely on Keycloak
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserDTO {
-    private Long id;
+    private String id;
 
     @NotBlank(message = "Username is required")
     @Size(max = 50, message = "Username cannot exceed 50 characters")
@@ -40,8 +39,6 @@ public class UserDTO {
     private String sshPublicKey;
 
     private Set<String> roles;
-
-    private String keycloakId;
     
     /**
      * Get full name from firstName and lastName

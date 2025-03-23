@@ -2,22 +2,14 @@ package it.polito.cloudresources.be.mapper;
 
 import it.polito.cloudresources.be.dto.NotificationDTO;
 import it.polito.cloudresources.be.model.Notification;
-import it.polito.cloudresources.be.model.User;
-import it.polito.cloudresources.be.repository.UserRepository;
-import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Component;
 
 /**
  * Mapper for converting between Notification and NotificationDTO objects
+ * Now working with Keycloak IDs instead of User entities
  */
 @Component
 public class NotificationMapper implements EntityMapper<NotificationDTO, Notification> {
-    
-    private final UserRepository userRepository;
-    
-    public NotificationMapper(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
     
     @Override
     public Notification toEntity(NotificationDTO dto) {
@@ -31,9 +23,8 @@ public class NotificationMapper implements EntityMapper<NotificationDTO, Notific
         notification.setType(dto.getType());
         notification.setRead(dto.isRead());
         
-        // Note: We don't set the user here because we typically don't
-        // need to convert from DTO to entity for notifications
-        // That's handled in the service layer directly
+        // Note: We don't set the keycloakId here because it's typically
+        // set in the service layer directly during notification creation
         
         return notification;
     }
@@ -55,20 +46,11 @@ public class NotificationMapper implements EntityMapper<NotificationDTO, Notific
     }
     
     /**
-     * Creates a notification entity for a specific user
-     *
-     * @param dto the notification DTO
-     * @param userId the user ID
-     * @return the notification entity
+     * Creates a notification entity for a specific user by Keycloak ID
      */
-    public Notification createNotificationForUser(NotificationDTO dto, Long userId) {
+    public Notification createNotificationForUser(NotificationDTO dto, String keycloakId) {
         Notification notification = toEntity(dto);
-        
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
-                
-        notification.setUser(user);
-        
+        notification.setKeycloakId(keycloakId);
         return notification;
     }
 }

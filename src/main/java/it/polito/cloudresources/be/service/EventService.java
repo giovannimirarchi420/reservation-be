@@ -11,16 +11,20 @@ import it.polito.cloudresources.be.util.DateTimeUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * Service for event operations with consistent time zone handling
+ * Now using Keycloak user IDs instead of User entities
  */
 @Service
 @RequiredArgsConstructor
@@ -31,6 +35,7 @@ public class EventService {
     private final ResourceRepository resourceRepository;
     private final NotificationService notificationService;
     private final ResourceService resourceService;
+    private final KeycloakService keycloakService;
     private final EventMapper eventMapper;
     private final DateTimeUtils dateTimeUtils;
 
@@ -57,17 +62,10 @@ public class EventService {
     }
 
     /**
-     * Get events by user
-     */
-    public List<EventDTO> getEventsByUser(Long userId) {
-        return eventMapper.toDto(eventRepository.findByUserId(userId));
-    }
-
-    /**
      * Get events by user's Keycloak ID
      */
     public List<EventDTO> getEventsByUserKeycloakId(String keycloakId) {
-        return eventMapper.toDto(eventRepository.findByUserKeycloakId(keycloakId));
+        return eventMapper.toDto(eventRepository.findByKeycloakId(keycloakId));
     }
 
     /**
@@ -124,14 +122,31 @@ public class EventService {
             throw new IllegalStateException("Cannot book a resource that is not in ACTIVE state. Current state: " + resource.getStatus());
         }
         
+        // Verify user exists in Keycloak
+        if (eventDTO.getUserId() != null) {
+            keycloakService.getUserById(eventDTO.getUserId())
+                .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + eventDTO.getUserId()));
+        }
+        
         Event event = eventMapper.toEntity(eventDTO);
         Event savedEvent = eventRepository.save(event);
         
         log.debug("Saved event: {}", savedEvent);
         
+        // Get user display name for notification
+        String userDisplayName = "Unknown user";
+        try {
+            Optional<UserRepresentation> user = keycloakService.getUserById(event.getKeycloakId());
+            if (user.isPresent()) {
+                userDisplayName = user.get().getFirstName() + " " + user.get().getLastName();
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch user details for notification", e);
+        }
+        
         // Send notification to resource admin
         notificationService.createSystemNotification(
-                "New booking created for " + resource.getName() + " by " + event.getUser().getFullName(),
+                "New booking created for " + resource.getName() + " by " + userDisplayName,
                 "New booking from " + dateTimeUtils.formatDateTime(eventDTO.getStart()) + 
                 " to " + dateTimeUtils.formatDateTime(eventDTO.getEnd())
         );
@@ -204,8 +219,15 @@ public class EventService {
                         }
                     }
                     
-                    // For complex objects like this, it's better to use selective updates rather than
-                    // the full entity mapping from the DTO, because we need to preserve some relationships
+                    // Update user (Keycloak ID) if provided
+                    if (eventDTO.getUserId() != null && !eventDTO.getUserId().equals(existingEvent.getKeycloakId())) {
+                        // Verify the new user exists in Keycloak
+                        keycloakService.getUserById(eventDTO.getUserId())
+                            .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + eventDTO.getUserId()));
+                            
+                        existingEvent.setKeycloakId(eventDTO.getUserId());
+                    }
+                    
                     Event updatedEvent = eventRepository.save(existingEvent);
                     log.debug("Updated event: {}", updatedEvent);
                     return eventMapper.toDto(updatedEvent);
@@ -280,5 +302,24 @@ public class EventService {
         return resourceRepository.findById(resourceId)
                 .map(resource -> resource.getStatus() == ResourceStatus.ACTIVE)
                 .orElse(false);
+    }
+    
+    /**
+     * Helper method to get user information for events from Keycloak
+     */
+    private Map<String, String> getUserDisplayNames(List<String> keycloakIds) {
+        Map<String, String> result = new HashMap<>();
+        
+        for (String keycloakId : keycloakIds) {
+            keycloakService.getUserById(keycloakId).ifPresent(user -> {
+                String displayName = user.getUsername();
+                if (user.getFirstName() != null && user.getLastName() != null) {
+                    displayName = user.getFirstName() + " " + user.getLastName();
+                }
+                result.put(keycloakId, displayName);
+            });
+        }
+        
+        return result;
     }
 }

@@ -4,61 +4,64 @@ import it.polito.cloudresources.be.dto.NotificationDTO;
 import it.polito.cloudresources.be.mapper.NotificationMapper;
 import it.polito.cloudresources.be.model.Notification;
 import it.polito.cloudresources.be.model.NotificationType;
-import it.polito.cloudresources.be.model.User;
 import it.polito.cloudresources.be.repository.NotificationRepository;
-import it.polito.cloudresources.be.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
- * Service for notification operations
+ * Service for notification operations with Keycloak integration
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
-    private final UserRepository userRepository;
+    private final KeycloakService keycloakService;
     private final NotificationMapper notificationMapper;
     private final AuditLogService auditLogService;
 
     /**
-     * Get all notifications for a user
+     * Get all notifications for a user by Keycloak ID
      */
-    public List<NotificationDTO> getUserNotifications(Long userId) {
-        return notificationMapper.toDto(
-                notificationRepository.findByUserIdOrderByCreatedAtDesc(userId)
-        );
+    public List<NotificationDTO> getUserNotifications(String keycloakId) {
+        return notificationRepository.findByKeycloakIdOrderByCreatedAtDesc(keycloakId).stream()
+                .map(notificationMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     /**
-     * Get unread notifications for a user
+     * Get unread notifications for a user by Keycloak ID
      */
-    public List<NotificationDTO> getUnreadNotifications(Long userId) {
-        return notificationMapper.toDto(
-                notificationRepository.findByUserIdAndReadOrderByCreatedAtDesc(userId, false)
-        );
+    public List<NotificationDTO> getUnreadNotifications(String keycloakId) {
+        return notificationRepository.findByKeycloakIdAndReadOrderByCreatedAtDesc(keycloakId, false).stream()
+                .map(notificationMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     /**
-     * Get the count of unread notifications for a user
+     * Get the count of unread notifications for a user by Keycloak ID
      */
-    public int getUnreadNotificationCount(Long userId) {
-        return notificationRepository.findByUserIdAndReadOrderByCreatedAtDesc(userId, false).size();
+    public int getUnreadNotificationCount(String keycloakId) {
+        return notificationRepository.countByKeycloakIdAndRead(keycloakId, false);
     }
 
     /**
      * Mark a notification as read
      */
     @Transactional
-    public Optional<NotificationDTO> markAsRead(Long notificationId, Long userId) {
+    public Optional<NotificationDTO> markAsRead(Long notificationId, String keycloakId) {
         return notificationRepository.findById(notificationId)
-                .filter(notification -> notification.getUser().getId().equals(userId))
+                .filter(notification -> notification.getKeycloakId().equals(keycloakId))
                 .map(notification -> {
                     notification.setRead(true);
                     return notificationMapper.toDto(notificationRepository.save(notification));
@@ -66,27 +69,27 @@ public class NotificationService {
     }
 
     /**
-     * Mark all notifications as read for a user
+     * Mark all notifications as read for a user by Keycloak ID
      */
     @Transactional
-    public void markAllAsRead(Long userId) {
-        List<Notification> notifications = notificationRepository.findByUserIdAndReadOrderByCreatedAtDesc(userId, false);
+    public void markAllAsRead(String keycloakId) {
+        List<Notification> notifications = notificationRepository.findByKeycloakIdAndReadOrderByCreatedAtDesc(keycloakId, false);
         for (Notification notification : notifications) {
             notification.setRead(true);
             notificationRepository.save(notification);
         }
         
         // Log the action
-        auditLogService.logUserAction("notification", "Mark all as read for user ID: " + userId);
+        auditLogService.logUserAction("notification", "Mark all as read for user ID: " + keycloakId);
     }
 
     /**
      * Delete a notification
      */
     @Transactional
-    public boolean deleteNotification(Long notificationId, Long userId) {
+    public boolean deleteNotification(Long notificationId, String keycloakId) {
         Optional<Notification> notification = notificationRepository.findById(notificationId);
-        if (notification.isPresent() && notification.get().getUser().getId().equals(userId)) {
+        if (notification.isPresent() && notification.get().getKeycloakId().equals(keycloakId)) {
             notificationRepository.delete(notification.get());
             
             // Log the action
@@ -98,12 +101,13 @@ public class NotificationService {
     }
 
     /**
-     * Create a notification for a user
+     * Create a notification for a user by Keycloak ID
      */
     @Transactional
-    public NotificationDTO createNotification(Long userId, String message, String type) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+    public NotificationDTO createNotification(String keycloakId, String message, String type) {
+        // Verify the user exists in Keycloak
+        UserRepresentation user = keycloakService.getUserById(keycloakId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + keycloakId));
         
         NotificationType notificationType;
         try {
@@ -116,7 +120,7 @@ public class NotificationService {
         notification.setMessage(message);
         notification.setType(notificationType);
         notification.setRead(false);
-        notification.setUser(user);
+        notification.setKeycloakId(keycloakId);
         
         Notification savedNotification = notificationRepository.save(notification);
         return notificationMapper.toDto(savedNotification);
@@ -127,7 +131,7 @@ public class NotificationService {
      */
     @Transactional
     public void createNotificationForRole(String role, String message, String type) {
-        List<User> users = userRepository.findByRolesContaining(role);
+        List<UserRepresentation> users = keycloakService.getUsersByRole(role);
         
         NotificationType notificationType;
         try {
@@ -136,12 +140,12 @@ public class NotificationService {
             notificationType = NotificationType.INFO;
         }
         
-        for (User user : users) {
+        for (UserRepresentation user : users) {
             Notification notification = new Notification();
             notification.setMessage(message);
             notification.setType(notificationType);
             notification.setRead(false);
-            notification.setUser(user);
+            notification.setKeycloakId(user.getId());
             
             notificationRepository.save(notification);
         }
@@ -164,7 +168,7 @@ public class NotificationService {
      */
     @Transactional
     public void createGlobalNotification(String message, String type) {
-        List<User> users = userRepository.findAll();
+        List<UserRepresentation> users = keycloakService.getUsers();
         
         NotificationType notificationType;
         try {
@@ -173,12 +177,12 @@ public class NotificationService {
             notificationType = NotificationType.INFO;
         }
         
-        for (User user : users) {
+        for (UserRepresentation user : users) {
             Notification notification = new Notification();
             notification.setMessage(message);
             notification.setType(notificationType);
             notification.setRead(false);
-            notification.setUser(user);
+            notification.setKeycloakId(user.getId());
             
             notificationRepository.save(notification);
         }

@@ -1,23 +1,33 @@
 package it.polito.cloudresources.be.config.dev;
 
 import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
-import it.polito.cloudresources.be.model.*;
+import it.polito.cloudresources.be.model.Event;
+import it.polito.cloudresources.be.model.Resource;
+import it.polito.cloudresources.be.model.ResourceStatus;
+import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
-import it.polito.cloudresources.be.repository.UserRepository;
+import it.polito.cloudresources.be.service.KeycloakService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 import java.time.ZonedDateTime;
-import java.util.Set;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Configuration for initializing sample data for development
+ * Updated to use Keycloak for user data
  */
 @Configuration
 @RequiredArgsConstructor
@@ -27,8 +37,8 @@ public class DataInitializer {
 
     private final ResourceTypeRepository resourceTypeRepository;
     private final ResourceRepository resourceRepository;
-    private final UserRepository userRepository;
     private final EventRepository eventRepository;
+    private final KeycloakService keycloakService;
 
     /**
      * Initialize sample data
@@ -48,10 +58,8 @@ public class DataInitializer {
                 createSampleResources();
             }
             
-            // Create sample admin user if none exist
-            if (userRepository.count() == 0) {
-                createSampleUsers();
-            }
+            // Create sample users in Keycloak
+            createSampleUsers();
             
             // Create sample events if none exist
             if (eventRepository.count() == 0) {
@@ -146,32 +154,71 @@ public class DataInitializer {
     }
 
     /**
-     * Create sample users
+     * Create sample users in Keycloak
      */
     private void createSampleUsers() {
-        log.info("Creating sample users...");
+        log.info("Ensuring sample users exist in Keycloak...");
         
-        User adminUser = new User();
-        adminUser.setUsername("admin1");
-        adminUser.setFirstName("Mario");
-        adminUser.setLastName("Rossi");
-        adminUser.setEmail("admin@example.com");
-        adminUser.setAvatar("AU");
-        adminUser.setRoles(Set.of("ADMIN"));
-        adminUser.setKeycloakId("aaa-bbb-ccc");
-        userRepository.save(adminUser);
+        // Admin user
+        String adminKeycloakId = ensureUserExists(
+                "admin1", 
+                "admin@example.com", 
+                "Mario", 
+                "Rossi", 
+                "admin123", 
+                Arrays.asList("ADMIN", "USER"),
+                "AU");
+                
+        // Regular user
+        String userKeycloakId = ensureUserExists(
+                "user1", 
+                "user@example.com", 
+                "Dario", 
+                "Argento", 
+                "user123", 
+                Collections.singletonList("USER"),
+                "RU");
+                
+        log.info("Sample users ensured in Keycloak: Admin ID={}, User ID={}", adminKeycloakId, userKeycloakId);
+    }
+    
+    /**
+     * Ensure a user exists in Keycloak, create if not
+     */
+    private String ensureUserExists(String username, String email, String firstName, String lastName, 
+                                 String password, List<String> roles, String avatar) {
+        // Check if user already exists
+        Optional<UserRepresentation> existingUser = keycloakService.getUserByUsername(username);
         
-        User regularUser = new User();
-        regularUser.setUsername("user1");
-        regularUser.setFirstName("Dario");
-        regularUser.setLastName("Argento");
-        regularUser.setEmail("user@example.com");
-        regularUser.setAvatar("RU");
-        regularUser.setRoles(Set.of("USER"));
-        regularUser.setKeycloakId("ccc-bbb-ddd");
-        userRepository.save(regularUser);
-        
-        log.info("Sample users created.");
+        if (existingUser.isPresent()) {
+            String userId = existingUser.get().getId();
+            
+            // Update user if needed
+            Map<String, Object> updates = new HashMap<>();
+            
+            // Add avatar if missing
+            if (keycloakService.getUserAvatar(userId).isEmpty()) {
+                updates.put(KeycloakService.ATTR_AVATAR, avatar);
+            }
+            
+            // Apply any updates
+            if (!updates.isEmpty()) {
+                keycloakService.updateUser(userId, updates);
+            }
+            
+            return userId;
+        } else {
+            // Create new user
+            return keycloakService.createUser(
+                    username, 
+                    email, 
+                    firstName, 
+                    lastName, 
+                    password, 
+                    roles,
+                    null, // No SSH key initially
+                    avatar);
+        }
     }
     
     /**
@@ -180,10 +227,13 @@ public class DataInitializer {
     private void createSampleEvents() {
         log.info("Creating sample events...");
         
-        // Get sample users
-        User adminUser = userRepository.findByEmail("admin@example.com")
+        // Get sample user IDs
+        String adminKeycloakId = keycloakService.getUserByUsername("admin1")
+                .map(UserRepresentation::getId)
                 .orElseThrow(() -> new RuntimeException("Admin user not found"));
-        User regularUser = userRepository.findByEmail("user@example.com")
+                
+        String regularUserKeycloakId = keycloakService.getUserByUsername("user1")
+                .map(UserRepresentation::getId)
                 .orElseThrow(() -> new RuntimeException("Regular user not found"));
                 
         // Get sample resources
@@ -206,7 +256,7 @@ public class DataInitializer {
         event1.setStart(now.plusDays(1).withHour(9).withMinute(0).withSecond(0));
         event1.setEnd(now.plusDays(1).withHour(17).withMinute(0).withSecond(0));
         event1.setResource(server1);
-        event1.setUser(adminUser);
+        event1.setKeycloakId(adminKeycloakId);
         eventRepository.save(event1);
         
         Event event2 = new Event();
@@ -215,7 +265,7 @@ public class DataInitializer {
         event2.setStart(now.plusDays(2).withHour(10).withMinute(0).withSecond(0));
         event2.setEnd(now.plusDays(2).withHour(16).withMinute(0).withSecond(0));
         event2.setResource(gpu);
-        event2.setUser(regularUser);
+        event2.setKeycloakId(regularUserKeycloakId);
         eventRepository.save(event2);
         
         // Past event
@@ -225,7 +275,7 @@ public class DataInitializer {
         event3.setStart(now.minusDays(3).withHour(9).withMinute(0).withSecond(0));
         event3.setEnd(now.minusDays(3).withHour(12).withMinute(0).withSecond(0));
         event3.setResource(server1);
-        event3.setUser(regularUser);
+        event3.setKeycloakId(regularUserKeycloakId);
         eventRepository.save(event3);
         
         log.info("Sample events created.");

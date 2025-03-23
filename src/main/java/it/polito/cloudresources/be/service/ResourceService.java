@@ -5,7 +5,6 @@ import it.polito.cloudresources.be.mapper.ResourceMapper;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
-import it.polito.cloudresources.be.model.User;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.util.DateTimeUtils;
@@ -25,6 +24,7 @@ import java.util.stream.Collectors;
 
 /**
  * Service for resource operations
+ * Updated to work with Keycloak user IDs
  */
 @Service
 @RequiredArgsConstructor
@@ -158,19 +158,19 @@ public class ResourceService {
             
             // Notify users with future bookings
             if (!futureEvents.isEmpty()) {
-                Set<User> usersToNotify = new HashSet<>();
+                Set<String> keycloakIdsToNotify = new HashSet<>();
                 
                 // Collect all unique users with future bookings
                 // Delete all future bookings
                 for (Event event : futureEvents) {
-                    usersToNotify.add(event.getUser());
+                    keycloakIdsToNotify.add(event.getKeycloakId());
                     eventRepository.delete(event);
                 }
 
                 // Send notification to each affected user
-                for (User user : usersToNotify) {
+                for (String keycloakId : keycloakIdsToNotify) {
                     notificationService.createNotification(
-                        user.getId(),
+                        keycloakId,
                         "Booking cancelled: Resource " + resource.getName() + " has been removed",
                         "ERROR"
                     );
@@ -233,17 +233,17 @@ public class ResourceService {
             
             if (!futureEvents.isEmpty()) {
                 // Create a set to avoid duplicate notifications to the same user
-                Set<User> usersToNotify = new HashSet<>();
+                Set<String> keycloakIdsToNotify = new HashSet<>();
                 
                 // Collect all unique users with future bookings
                 for (Event event : futureEvents) {
-                    usersToNotify.add(event.getUser());
+                    keycloakIdsToNotify.add(event.getKeycloakId());
                 }
                 
                 // Send notification to each affected user
-                for (User user : usersToNotify) {
+                for (String keycloakId : keycloakIdsToNotify) {
                     notificationService.createNotification(
-                        user.getId(),
+                        keycloakId,
                         "Resource unavailable: " + resource.getName() + " is now " + newStatus.toString().toLowerCase(),
                         "WARNING"
                     );
@@ -251,7 +251,7 @@ public class ResourceService {
                 
                 // Log the notifications
                 log.info("Sent notifications to {} users about resource status change for {}", 
-                        usersToNotify.size(), resource.getName());
+                        keycloakIdsToNotify.size(), resource.getName());
             }
         }
         
@@ -266,26 +266,26 @@ public class ResourceService {
                     .collect(Collectors.toList());
             
             // Create a set to avoid duplicate notifications to the same user
-            Set<User> usersToNotify = new HashSet<>();
+            Set<String> keycloakIdsToNotify = new HashSet<>();
             
             // Collect all unique users with future bookings
             for (Event event : futureEvents) {
-                usersToNotify.add(event.getUser());
+                keycloakIdsToNotify.add(event.getKeycloakId());
             }
             
             // Send notification to each affected user
-            for (User user : usersToNotify) {
+            for (String keycloakId : keycloakIdsToNotify) {
                 notificationService.createNotification(
-                    user.getId(),
+                    keycloakId,
                     "Resource available: " + resource.getName() + " is now active",
                     "SUCCESS"
                 );
             }
             
-            if (!usersToNotify.isEmpty()) {
+            if (!keycloakIdsToNotify.isEmpty()) {
                 // Log the notifications
                 log.info("Sent notifications to {} users about resource becoming active again: {}", 
-                        usersToNotify.size(), resource.getName());
+                        keycloakIdsToNotify.size(), resource.getName());
             }
         }
     }
@@ -296,5 +296,4 @@ public class ResourceService {
             collectAllSubResources(subResource, subResources);
         });
     }
-
 }

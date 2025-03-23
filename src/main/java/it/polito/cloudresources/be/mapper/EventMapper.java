@@ -3,30 +3,31 @@ package it.polito.cloudresources.be.mapper;
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
-import it.polito.cloudresources.be.model.User;
 import it.polito.cloudresources.be.repository.ResourceRepository;
-import it.polito.cloudresources.be.repository.UserRepository;
+import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.util.DateTimeUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Component;
 
 /**
  * Mapper for converting between Event and EventDTO objects
+ * Now using Keycloak IDs instead of User entities
  */
 @Component
 @Slf4j
 public class EventMapper implements EntityMapper<EventDTO, Event> {
     
     private final ResourceRepository resourceRepository;
-    private final UserRepository userRepository;
+    private final KeycloakService keycloakService;
     private final DateTimeUtils dateTimeUtils;
     
     public EventMapper(ResourceRepository resourceRepository, 
-                       UserRepository userRepository,
+                       KeycloakService keycloakService,
                        DateTimeUtils dateTimeUtils) {
         this.resourceRepository = resourceRepository;
-        this.userRepository = userRepository;
+        this.keycloakService = keycloakService;
         this.dateTimeUtils = dateTimeUtils;
     }
     
@@ -61,10 +62,8 @@ public class EventMapper implements EntityMapper<EventDTO, Event> {
         
         // Set the user by Keycloak ID
         if (dto.getUserId() != null) {
-            log.debug("Looking for user with Keycloak ID: {}", dto.getUserId());
-            User user = userRepository.findByKeycloakId(dto.getUserId())
-                    .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + dto.getUserId()));
-            event.setUser(user);
+            log.debug("Setting Keycloak ID: {}", dto.getUserId());
+            event.setKeycloakId(dto.getUserId());
         }
         
         return event;
@@ -91,9 +90,19 @@ public class EventMapper implements EntityMapper<EventDTO, Event> {
             dto.setResourceName(entity.getResource().getName());
         }
         
-        if (entity.getUser() != null) {
-            dto.setUserId(entity.getUser().getKeycloakId());
-            dto.setUserName(entity.getUser().getUsername());
+        // Set user information from Keycloak
+        dto.setUserId(entity.getKeycloakId());
+        
+        // Try to get username from Keycloak
+        try {
+            UserRepresentation user = keycloakService.getUserById(entity.getKeycloakId())
+                .orElse(null);
+                
+            if (user != null) {
+                dto.setUserName(user.getUsername());
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch username for Keycloak ID: {}", entity.getKeycloakId());
         }
         
         return dto;

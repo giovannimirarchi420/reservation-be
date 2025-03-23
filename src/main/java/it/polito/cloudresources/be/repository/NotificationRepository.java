@@ -1,7 +1,6 @@
 package it.polito.cloudresources.be.repository;
 
 import it.polito.cloudresources.be.model.Notification;
-import it.polito.cloudresources.be.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -9,21 +8,22 @@ import java.util.List;
 
 /**
  * Repository for Notification entity operations
+ * Now using Keycloak IDs instead of User entities
  */
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
     /**
-     * Find notifications by user
+     * Find notifications by Keycloak user ID and read status, ordered by creation date
      */
-    List<Notification> findByUser(User user);
+    List<Notification> findByKeycloakIdAndReadOrderByCreatedAtDesc(String keycloakId, boolean read);
 
     /**
-     * Find notifications by user ID and read status, ordered by creation date
+     * Find all notifications for a user by Keycloak ID, ordered by creation date
      */
-    List<Notification> findByUserIdAndReadOrderByCreatedAtDesc(Long userId, boolean read);
-
+    List<Notification> findByKeycloakIdOrderByCreatedAtDesc(String keycloakId);
+    
     /**
-     * Find all notifications for a user, ordered by creation date
+     * Count unread notifications for a user by Keycloak ID
      */
-    List<Notification> findByUserIdOrderByCreatedAtDesc(Long userId);
+    int countByKeycloakIdAndRead(String keycloakId, boolean read);
 }
