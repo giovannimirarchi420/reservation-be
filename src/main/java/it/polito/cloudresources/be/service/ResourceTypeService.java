@@ -6,6 +6,8 @@ import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,8 +23,16 @@ public class ResourceTypeService {
 
     private final ResourceTypeRepository resourceTypeRepository;
     private final ResourceRepository resourceRepository;
+    private final KeycloakService keycloakService;
     private final ResourceTypeMapper resourceTypeMapper;
     private final AuditLogService auditLogService;
+
+    /**
+     * Get all resource types filtered by federations
+     */
+    public List<ResourceTypeDTO> getAllResourceTypes(List<String> federationIds) {
+        return resourceTypeMapper.toDto(resourceTypeRepository.findByFederationIdIn(federationIds));
+    }
 
     /**
      * Get all resource types
@@ -43,7 +53,11 @@ public class ResourceTypeService {
      * Create new resource type
      */
     @Transactional
-    public ResourceTypeDTO createResourceType(ResourceTypeDTO resourceTypeDTO) {
+    public ResourceTypeDTO createResourceType(ResourceTypeDTO resourceTypeDTO, String userId) {
+        if (!canUpdateResourceTypeInFederation(userId, resourceTypeDTO.getFederationId())) {
+            throw new AccessDeniedException("You don't have permission to create resource types in this federation");
+        }
+
         ResourceType resourceType = resourceTypeMapper.toEntity(resourceTypeDTO);
         ResourceType savedType = resourceTypeRepository.save(resourceType);
         
@@ -58,9 +72,13 @@ public class ResourceTypeService {
      * Update existing resource type
      */
     @Transactional
-    public Optional<ResourceTypeDTO> updateResourceType(Long id, ResourceTypeDTO resourceTypeDTO) {
+    public Optional<ResourceTypeDTO> updateResourceType(Long id, ResourceTypeDTO resourceTypeDTO, String userId) {
         return resourceTypeRepository.findById(id)
                 .map(existingType -> {
+                    if (!canUpdateResourceTypeInFederation(userId, existingType.getFederationId())) {
+                        throw new AccessDeniedException("You don't have permission to create resource types in this federation");
+                    }
+
                     // Apply updates from DTO to entity
                     existingType.setName(resourceTypeDTO.getName());
                     existingType.setColor(resourceTypeDTO.getColor());
@@ -78,12 +96,15 @@ public class ResourceTypeService {
 
     /**
      * Delete resource type
-     * Returns false if the type doesn't exist or is in use
+     * Returns false if the type doesn't exist or is in use or the user does not have the grants
      */
     @Transactional
-    public boolean deleteResourceType(Long id) {
+    public boolean deleteResourceType(Long id, String userId) {
+
+        Optional<ResourceType> resourceType = resourceTypeRepository.findById(id);
+
         // Check if the resource type exists
-        if (!resourceTypeRepository.existsById(id)) {
+        if (!resourceType.isPresent()) {
             return false;
         }
         
@@ -91,11 +112,13 @@ public class ResourceTypeService {
         if (!resourceRepository.findByTypeId(id).isEmpty()) {
             return false;
         }
+
+        if (!canUpdateResourceTypeInFederation(userId, resourceType.get().getFederationId())) {
+            throw new AccessDeniedException("You don't have permission to delete resource types in this federation");
+        }
         
         // Get type name for logging before deletion
-        String typeName = resourceTypeRepository.findById(id)
-                .map(ResourceType::getName)
-                .orElse("Unknown");
+        String typeName = resourceType.get().getName();
         
         // Delete the resource type
         resourceTypeRepository.deleteById(id);
@@ -107,10 +130,17 @@ public class ResourceTypeService {
         return true;
     }
 
-    /**
-     * Check if a resource type exists by name
-     */
-    public boolean existsByName(String name) {
-        return resourceTypeRepository.existsByName(name);
+    private boolean canUpdateResourceTypeInFederation(String userId, String federationId) {
+        // Global admins can create resources in any federation
+        if (keycloakService.hasGlobalAdminRole(userId)) {
+            return true;
+        }
+        
+        // Federation admins can create resources only in their federations
+        if (keycloakService.isUserFederationAdmin(userId, federationId)) {
+            return true;
+        }
+        
+        return false;
     }
 }

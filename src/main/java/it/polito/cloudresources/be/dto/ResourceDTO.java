@@ -40,7 +40,11 @@ public class ResourceDTO {
     @NotNull(message = "Resource type is required")
     private Long typeId;
 
+    @NotNull(message = "Resource federationId is required")
+    private String federationId;
+    
     // Additional fields for the frontend
     private String typeName;
     private String typeColor;
+    private String federationName;
 }

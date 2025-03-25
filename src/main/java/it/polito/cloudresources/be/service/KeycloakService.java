@@ -5,15 +5,21 @@ import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
+import org.keycloak.admin.client.resource.GroupResource;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
+
+import it.polito.cloudresources.be.dto.FederationDTO;
+import it.polito.cloudresources.be.mapper.FederationMapper;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -28,6 +34,9 @@ public class KeycloakService {
 
     public static final String ATTR_SSH_KEY = "ssh_key";
     public static final String ATTR_AVATAR = "avatar";
+    
+    @Autowired
+    private FederationMapper federationMapper;
 
     @Value("${keycloak.auth-server-url}")
     private String authServerUrl;
@@ -509,6 +518,409 @@ public class KeycloakService {
             return usersWithRole;
         } catch (Exception e) {
             log.error("Error finding users by role from Keycloak", e);
+            return Collections.emptyList();
+        }
+    }
+
+    public List<GroupRepresentation> getAllFederations() {
+        return getRealmResource().groups().groups();
+    }
+    
+    public Optional<GroupRepresentation> getFederationById(String federationId) {
+        try {
+            GroupRepresentation group = getRealmResource().groups().group(federationId).toRepresentation();
+            return Optional.of(group);
+        } catch (Exception e) {
+            log.error("Error fetching federation", e);
+            return Optional.empty();
+        }
+    }
+    
+    /**
+     * Create a federation from a GroupRepresentation
+     */
+    public String createFederation(GroupRepresentation group) {
+        try {
+            Response response = getRealmResource().groups().add(group);
+            if (response.getStatus() == 201) {
+                String locationPath = response.getLocation().getPath();
+                String federationId = locationPath.substring(locationPath.lastIndexOf('/') + 1);
+                log.info("Created federation with ID: {}", federationId);
+                return federationId;
+            } else {
+                log.error("Failed to create federation. Status: {}", response.getStatus());
+            }
+        } catch (Exception e) {
+            log.error("Error creating federation", e);
+        }
+        return null;
+    }
+    
+    /**
+     * Create a federation with name and description
+     */
+    public String createFederation(String name, String description) {
+        GroupRepresentation group = new GroupRepresentation();
+        group.setName(name);
+        
+        // Set attributes for the description
+        Map<String, List<String>> attributes = new HashMap<>();
+        if (description != null && !description.isEmpty()) {
+            attributes.put("description", Collections.singletonList(description));
+            group.setAttributes(attributes);
+        }
+        
+        return createFederation(group);
+    }
+    
+    /**
+     * Update an existing federation
+     */
+    public boolean updateFederation(String federationId, GroupRepresentation updatedGroup) {
+        try {
+            // First get the current group to ensure it exists
+            GroupResource groupResource = getRealmResource().groups().group(federationId);
+            GroupRepresentation currentGroup = groupResource.toRepresentation();
+            
+            // We want to preserve the ID when updating
+            updatedGroup.setId(federationId);
+            
+            // For subgroups, preserve the existing ones if not specified in the update
+            if (updatedGroup.getSubGroups() == null && currentGroup.getSubGroups() != null) {
+                updatedGroup.setSubGroups(currentGroup.getSubGroups());
+            }
+            
+            // Update the group
+            groupResource.update(updatedGroup);
+            log.info("Updated federation with ID: {}", federationId);
+            return true;
+        } catch (Exception e) {
+            log.error("Error updating federation with ID: {}", federationId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Delete a federation
+     */
+    public boolean deleteFederation(String federationId) {
+        try {
+            // Check if the federation exists
+            GroupResource groupResource = getRealmResource().groups().group(federationId);
+            GroupRepresentation group = groupResource.toRepresentation();
+            
+            if (group != null) {
+                // Delete the federation
+                groupResource.remove();
+                log.info("Deleted federation with ID: {}", federationId);
+                return true;
+            } else {
+                log.warn("Federation with ID {} not found for deletion", federationId);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("Error deleting federation with ID: {}", federationId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Check if a user is a member of a specific federation (group)
+     */
+    public boolean isUserInFederation(String userId, String federationId) {
+        try {
+            UserResource userResource = getRealmResource().users().get(userId);
+            List<GroupRepresentation> userGroups = userResource.groups();
+            
+            // Check if any of the user's groups matches the federation ID
+            return userGroups.stream()
+                .anyMatch(group -> group.getId().equals(federationId));
+        } catch (Exception e) {
+            log.error("Error checking if user {} is in federation {}", userId, federationId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Add a user to a federation (group)
+     */
+    public boolean addUserToFederation(String userId, String federationId) {
+        try {
+            // Check if user is already in the federation
+            if (isUserInFederation(userId, federationId)) {
+                log.info("User {} is already in federation {}", userId, federationId);
+                return true;
+            }
+            
+            // Add user to federation group
+            UserResource userResource = getRealmResource().users().get(userId);
+            userResource.joinGroup(federationId);
+            
+            log.info("Added user {} to federation {}", userId, federationId);
+            return true;
+        } catch (Exception e) {
+            log.error("Error adding user {} to federation {}", userId, federationId, e);
+            return false;
+        }
+    }
+    
+    
+    /**
+     * Make a user a federation admin
+     */
+    public boolean makeFederationAdmin(String userId, String federationId) {
+        try {
+            // First ensure the user is a member of the federation
+            if (!isUserInFederation(userId, federationId)) {
+                addUserToFederation(userId, federationId);
+            }
+            
+            // Then assign the FEDERATION_ADMIN role
+            List<String> currentRoles = getUserRoles(userId);
+            if (!currentRoles.contains("FEDERATION_ADMIN")) {
+                assignRoleToUser(userId, "FEDERATION_ADMIN");
+            }
+            
+            // Store the federation admin relationship in user attributes
+            UserResource userResource = getRealmResource().users().get(userId);
+            UserRepresentation user = userResource.toRepresentation();
+            
+            Map<String, List<String>> attributes = user.getAttributes();
+            if (attributes == null) {
+                attributes = new HashMap<>();
+            }
+            
+            // Get or create admin_federations attribute
+            String ADMIN_FEDERATIONS_ATTR = "admin_federations";
+            List<String> adminFederations = attributes.containsKey(ADMIN_FEDERATIONS_ATTR) 
+                ? new ArrayList<>(attributes.get(ADMIN_FEDERATIONS_ATTR)) 
+                : new ArrayList<>();
+            
+            // Add this federation if not already present
+            if (!adminFederations.contains(federationId)) {
+                adminFederations.add(federationId);
+                attributes.put(ADMIN_FEDERATIONS_ATTR, adminFederations);
+                user.setAttributes(attributes);
+                userResource.update(user);
+            }
+            
+            log.info("User {} made admin of federation {}", userId, federationId);
+            return true;
+        } catch (Exception e) {
+            log.error("Error making user {} admin of federation {}", userId, federationId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Remove federation admin status from a user
+     */
+    public boolean removeFederationAdmin(String userId, String federationId) {
+        try {
+            UserResource userResource = getRealmResource().users().get(userId);
+            UserRepresentation user = userResource.toRepresentation();
+            
+            Map<String, List<String>> attributes = user.getAttributes();
+            if (attributes == null || !attributes.containsKey("admin_federations")) {
+                return true; // Not an admin, so removal successful
+            }
+            
+            // Remove this federation from admin federations
+            String ADMIN_FEDERATIONS_ATTR = "admin_federations";
+            List<String> adminFederations = new ArrayList<>(attributes.get(ADMIN_FEDERATIONS_ATTR));
+            adminFederations.remove(federationId);
+            
+            attributes.put(ADMIN_FEDERATIONS_ATTR, adminFederations);
+            user.setAttributes(attributes);
+            userResource.update(user);
+            
+            // If no longer admin of any federation, remove the FEDERATION_ADMIN role
+            if (adminFederations.isEmpty() && !hasGlobalAdminRole(userId)) {
+                RoleRepresentation federationAdminRole = getRealmResource().roles()
+                        .get("FEDERATION_ADMIN").toRepresentation();
+                userResource.roles().realmLevel().remove(Collections.singletonList(federationAdminRole));
+            }
+            
+            log.info("Removed admin status for user {} from federation {}", userId, federationId);
+            return true;
+        } catch (Exception e) {
+            log.error("Error removing admin status for user {} from federation {}", userId, federationId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Get federations where user is an admin
+     */
+    public List<String> getUserAdminFederations(String userId) {
+        try {
+            UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
+            Map<String, List<String>> attributes = user.getAttributes();
+            
+            if (attributes != null && attributes.containsKey("admin_federations")) {
+                return new ArrayList<>(attributes.get("admin_federations"));
+            }
+            
+            return new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Error getting admin federations for user {}", userId, e);
+            return new ArrayList<>();
+        }
+    }
+    
+    /**
+     * Check if user is an admin of a specific federation
+     */
+    public boolean isUserFederationAdmin(String userId, String federationId) {
+        // Global admins are implicitly federation admins
+        if (hasGlobalAdminRole(userId)) {
+            return true;
+        }
+        
+        return getUserAdminFederations(userId).contains(federationId);
+    }
+
+    /**
+     * Check if a user has the GLOBAL_ADMIN role
+     */
+    public boolean hasGlobalAdminRole(String userId) {
+        try {
+            List<String> roles = getUserRoles(userId);
+            return roles.contains("GLOBAL_ADMIN");
+        } catch (Exception e) {
+            log.error("Error checking if user {} has GLOBAL_ADMIN role", userId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Assign a role to a user
+     */
+    public boolean assignRoleToUser(String userId, String roleName) {
+        try {
+            UserResource userResource = getRealmResource().users().get(userId);
+            RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
+            
+            userResource.roles().realmLevel().add(Collections.singletonList(role));
+            log.info("Assigned role {} to user {}", roleName, userId);
+            return true;
+        } catch (Exception e) {
+            log.error("Error assigning role {} to user {}", roleName, userId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Get users who are members of a specific federation (group)
+     */
+    public List<UserRepresentation> getUsersInFederation(String federationId) {
+        try {
+            // Get the federation (group) resource
+            GroupResource groupResource = getRealmResource().groups().group(federationId);
+            
+            // Fetch all members of the group
+            // Note: The first parameter is 'first' (starting index), the second is 'max' (maximum results)
+            // Using 0 and Integer.MAX_VALUE to get all members without pagination
+            List<UserRepresentation> members = groupResource.members();
+            
+            log.debug("Found {} users in federation {}", members.size(), federationId);
+            return members;
+        } catch (Exception e) {
+            log.error("Error getting users in federation {}", federationId, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Remove a user from a federation (group)
+     */
+    public boolean removeUserFromFederation(String userId, String federationId) {
+        try {
+            // Check if user is actually in the federation
+            if (!isUserInFederation(userId, federationId)) {
+                log.info("User {} is not in federation {}, nothing to remove", userId, federationId);
+                return true; // Not an error since the end state is what was desired
+            }
+            
+            // Get the user resource
+            UserResource userResource = getRealmResource().users().get(userId);
+            
+            // Remove the user from the group
+            userResource.leaveGroup(federationId);
+            
+            // Verify removal was successful
+            boolean stillInFederation = isUserInFederation(userId, federationId);
+            if (stillInFederation) {
+                log.warn("Failed to remove user {} from federation {} - user is still a member", userId, federationId);
+                return false;
+            }
+            
+            log.info("Successfully removed user {} from federation {}", userId, federationId);
+            return true;
+        } catch (Exception e) {
+            log.error("Error removing user {} from federation {}: {}", userId, federationId, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Get all federations (groups) a user belongs to
+     */
+    public List<String> getUserFederations(String userId) {
+        try {
+            // Get the user resource
+            UserResource userResource = getRealmResource().users().get(userId);
+            
+            // Get all groups the user belongs to
+            List<GroupRepresentation> userGroups = userResource.groups();
+            
+            // Extract the federation IDs (group IDs)
+            List<String> federationIds = userGroups.stream()
+                .map(GroupRepresentation::getId)
+                .collect(Collectors.toList());
+            
+            log.debug("User {} belongs to {} federations", userId, federationIds.size());
+            return federationIds;
+        } catch (Exception e) {
+            log.error("Error retrieving federations for user {}: {}", userId, e.getMessage(), e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Get all federations a user belongs to as GroupRepresentations
+     */
+    public List<GroupRepresentation> getUserFederationGroups(String userId) {
+        try {
+            // Get the user resource
+            UserResource userResource = getRealmResource().users().get(userId);
+            
+            // Get all groups the user belongs to
+            List<GroupRepresentation> userGroups = userResource.groups();
+            
+            log.debug("User {} belongs to {} federation groups", userId, userGroups.size());
+            return userGroups;
+        } catch (Exception e) {
+            log.error("Error retrieving federation groups for user {}: {}", userId, e.getMessage(), e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Get all federations a user belongs to as FederationDTOs
+     * (This would use the FederationMapper, so we'd need to inject that dependency)
+     */
+    public List<FederationDTO> getUserFederationDTOs(String userId) {
+        try {
+            List<GroupRepresentation> federationGroups = getUserFederationGroups(userId);
+            
+            // Here you would use the federationMapper to convert these to DTOs
+            // This is just a placeholder for structure
+            return federationGroups.stream()
+                .map(federationMapper::toDto)
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error retrieving federation DTOs for user {}: {}", userId, e.getMessage(), e);
             return Collections.emptyList();
         }
     }

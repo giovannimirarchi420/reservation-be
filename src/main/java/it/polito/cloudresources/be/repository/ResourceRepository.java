@@ -31,9 +31,13 @@ public interface ResourceRepository extends JpaRepository<Resource, Long> {
     /**
      * Search resources by name, specs, or location
      */
-    List<Resource> findByNameContainingOrSpecsContainingOrLocationContaining(
-            String name, String specs, String location);
+    List<Resource> findByFederationIdInAndNameContainingOrSpecsContainingOrLocationContaining(
+        List<String> federationId, String name, String specs, String location);
 
     
     List<Resource> findByParentIsNull();
+
+    List<Resource> findByFederationId(String federationId);
+    
+    List<Resource> findByFederationIdIn(List<String> federationIds);
 }

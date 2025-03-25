@@ -22,4 +22,7 @@ public class ResourceTypeDTO {
 
     @Size(max = 7, message = "Color should be in hex format (e.g. #FF5733)")
     private String color;
+
+    private String federationId;
+    private String federationName; // For UI display
 }

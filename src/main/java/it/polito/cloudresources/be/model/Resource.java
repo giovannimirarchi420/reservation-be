@@ -54,6 +54,9 @@ public class Resource extends AuditableEntity {
     @OneToMany(mappedBy = "resource", cascade = CascadeType.ALL)
     private Set<Event> events = new HashSet<>();
 
+    @NotBlank
+    private String federationId; // Keycloak Group ID representing the federation
+
     // Helper methods for relationship management
     public void addSubResource(Resource subResource) {
         subResources.add(subResource);

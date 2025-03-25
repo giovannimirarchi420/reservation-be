@@ -8,14 +8,14 @@ import it.polito.cloudresources.be.model.ResourceStatus;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.util.DateTimeUtils;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -34,16 +34,41 @@ public class ResourceService {
     private final ResourceRepository resourceRepository;
     private final EventRepository eventRepository;
     private final NotificationService notificationService;
+    private final KeycloakService keycloakService;
     private final AuditLogService auditLogService;
     private final ResourceMapper resourceMapper;
     private final DateTimeUtils dateTimeUtils;
 
-    /**
-     * Get all resources
-     */
-    public List<ResourceDTO> getAllResources() {
-        return resourceMapper.toDto(resourceRepository.findAll());
+    public List<ResourceDTO> getAllResources(String userId) {
+        if (keycloakService.hasGlobalAdminRole(userId)) {
+            // Global admins see all resources
+            return resourceMapper.toDto(resourceRepository.findAll());
+        } else {
+            // Federation admins and regular users see only resources in their federations
+            List<String> userFederations = keycloakService.getUserFederations(userId);
+            return resourceMapper.toDto(resourceRepository.findByFederationIdIn(userFederations));
+        }
     }
+    
+    @Transactional
+    public ResourceDTO createResource(ResourceDTO resourceDTO, String userId) {
+        // Check authorization
+        if (!canUpdateResourceInFederation(userId, resourceDTO.getFederationId())) {
+            throw new AccessDeniedException("You don't have permission to create resources in this federation");
+        }
+        
+        // Create resource
+        Resource resource = resourceMapper.toEntity(resourceDTO);
+        Resource savedResource = resourceRepository.save(resource);
+        
+        // Log the action
+        auditLogService.logAdminAction("Resource", "create", 
+                "Created resource: " + savedResource.getName() + " in federation: " + resourceDTO.getFederationName());
+        
+        return resourceMapper.toDto(savedResource);
+    }
+    
+    // Similar changes for update, delete, etc.
 
     /**
      * Get resource by ID
@@ -68,30 +93,15 @@ public class ResourceService {
     }
 
     /**
-     * Create new resource
-     */
-    @Transactional
-    public ResourceDTO createResource(ResourceDTO resourceDTO) {
-        Resource resource = resourceMapper.toEntity(resourceDTO);
-        Resource savedResource = resourceRepository.save(resource);
-        
-        // Log the action
-        auditLogService.logAdminAction("Resource", "create", "Created resource: " + savedResource.getName());
-        
-        // Notify admins about new resource
-        notificationService.createSystemNotification(
-            "New resource created", 
-            "Resource " + savedResource.getName() + " has been added to the system"
-        );
-        
-        return resourceMapper.toDto(savedResource);
-    }
-
-    /**
      * Update existing resource
      */
     @Transactional
-    public Optional<ResourceDTO> updateResource(Long id, ResourceDTO resourceDTO) {
+    public Optional<ResourceDTO> updateResource(Long id, ResourceDTO resourceDTO, String userId) {
+        // Check authorization
+        if (!canUpdateResourceInFederation(userId, resourceDTO.getFederationId())) {
+            throw new AccessDeniedException("You don't have permission to update resources in this federation");
+        }
+
         return resourceRepository.findById(id)
                 .map(existingResource -> {
                     // Store old status for comparison
@@ -122,9 +132,15 @@ public class ResourceService {
      * Update resource status
      */
     @Transactional
-    public Optional<ResourceDTO> updateResourceStatus(Long id, ResourceStatus status) {
+    public Optional<ResourceDTO> updateResourceStatus(Long id, ResourceStatus status, String userId) {
         return resourceRepository.findById(id)
                 .map(existingResource -> {
+        
+                    // Check authorization
+                    if (!canUpdateResourceInFederation(userId, existingResource.getFederationId())) {
+                        throw new AccessDeniedException("You don't have permission to update resources in this federation");
+                    }
+        
                     ResourceStatus oldStatus = existingResource.getStatus();
                     existingResource.setStatus(status);
                     Resource updatedResource = resourceRepository.save(existingResource);
@@ -145,11 +161,14 @@ public class ResourceService {
      * Delete resource
      */
     @Transactional
-    public boolean deleteResource(Long id) {
+    public boolean deleteResource(Long id, String userId) {
         Optional<Resource> resourceOpt = resourceRepository.findById(id);
         if (resourceOpt.isPresent()) {
             Resource resource = resourceOpt.get();
-            
+            // Check authorization
+            if (!canUpdateResourceInFederation(userId, resource.getFederationId())) {
+                throw new AccessDeniedException("You don't have permission to update resources in this federation");
+            }
             // Check if resource has future bookings
             ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
             List<Event> futureEvents = eventRepository.findByResourceId(id).stream()
@@ -197,10 +216,10 @@ public class ResourceService {
     /**
      * Search resources
      */
-    public List<ResourceDTO> searchResources(String query) {
+    public List<ResourceDTO> searchResources(String query, List<String> federationIds) {
         return resourceMapper.toDto(
-                resourceRepository.findByNameContainingOrSpecsContainingOrLocationContaining(
-                        query, query, query)
+                resourceRepository.findByFederationIdInAndNameContainingOrSpecsContainingOrLocationContaining(
+                    federationIds, query, query, query)
         );
     }
 
@@ -295,5 +314,19 @@ public class ResourceService {
             subResources.add(subResource);
             collectAllSubResources(subResource, subResources);
         });
+    }
+
+    private boolean canUpdateResourceInFederation(String userId, String federationId) {
+        // Global admins can create resources in any federation
+        if (keycloakService.hasGlobalAdminRole(userId)) {
+            return true;
+        }
+        
+        // Federation admins can create resources only in their federations
+        if (keycloakService.isUserFederationAdmin(userId, federationId)) {
+            return true;
+        }
+        
+        return false;
     }
 }
