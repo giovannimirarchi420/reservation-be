@@ -18,16 +18,18 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Configuration for initializing sample data for development
- * Updated to use Keycloak for user data
+ * Updated to support federation model
  */
 @Configuration
 @RequiredArgsConstructor
@@ -76,19 +78,35 @@ public class DataInitializer {
     private void createResourceTypes() {
         log.info("Creating resource types...");
         
+        List<String> federationIds = keycloakService.getAllFederations().stream()
+                .map(group -> group.getId())
+                .collect(Collectors.toList());
+        
+        if (federationIds.isEmpty()) {
+            log.warn("No federations found. Please run FederationDataInitializer first.");
+            return;
+        }
+        
+        String poliToFedId = federationIds.get(0);
+        String secondFedId = federationIds.size() > 1 ? federationIds.get(1) : poliToFedId;
+        String thirdFedId = federationIds.size() > 2 ? federationIds.get(2) : poliToFedId;
+        
         ResourceType serverType = new ResourceType();
         serverType.setName("Server");
         serverType.setColor("#1976d2");
+        serverType.setFederationId(poliToFedId);
         resourceTypeRepository.save(serverType);
         
         ResourceType gpuType = new ResourceType();
         gpuType.setName("GPU");
         gpuType.setColor("#4caf50");
+        gpuType.setFederationId(secondFedId);
         resourceTypeRepository.save(gpuType);
         
         ResourceType switchType = new ResourceType();
         switchType.setName("Switch P4");
         switchType.setColor("#ff9800");
+        switchType.setFederationId(thirdFedId);
         resourceTypeRepository.save(switchType);
         
         log.info("Resource types created.");
@@ -100,20 +118,26 @@ public class DataInitializer {
     private void createSampleResources() {
         log.info("Creating sample resources...");
         
-        ResourceType serverType = resourceTypeRepository.findAll().stream()
+        List<ResourceType> types = resourceTypeRepository.findAll();
+        if (types.isEmpty()) {
+            log.warn("No resource types found. Resources cannot be created.");
+            return;
+        }
+        
+        ResourceType serverType = types.stream()
                 .filter(t -> t.getName().equals("Server"))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Server type not found"));
+                .orElse(types.get(0));
         
-        ResourceType gpuType = resourceTypeRepository.findAll().stream()
+        ResourceType gpuType = types.stream()
                 .filter(t -> t.getName().equals("GPU"))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("GPU type not found"));
+                .orElse(types.get(types.size() > 1 ? 1 : 0));
         
-        ResourceType switchType = resourceTypeRepository.findAll().stream()
+        ResourceType switchType = types.stream()
                 .filter(t -> t.getName().equals("Switch P4"))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Switch P4 type not found"));
+                .orElse(types.get(types.size() > 2 ? 2 : 0));
         
         // Create servers
         Resource server1 = new Resource();
@@ -122,6 +146,7 @@ public class DataInitializer {
         server1.setLocation("DC1");
         server1.setStatus(ResourceStatus.ACTIVE);
         server1.setType(serverType);
+        server1.setFederationId(serverType.getFederationId());
         resourceRepository.save(server1);
         
         Resource server2 = new Resource();
@@ -130,6 +155,7 @@ public class DataInitializer {
         server2.setLocation("DC1");
         server2.setStatus(ResourceStatus.ACTIVE);
         server2.setType(serverType);
+        server2.setFederationId(serverType.getFederationId());
         resourceRepository.save(server2);
         
         // Create GPU
@@ -139,6 +165,7 @@ public class DataInitializer {
         gpu.setLocation("DC2");
         gpu.setStatus(ResourceStatus.ACTIVE);
         gpu.setType(gpuType);
+        gpu.setFederationId(gpuType.getFederationId());
         resourceRepository.save(gpu);
         
         // Create Switch
@@ -148,6 +175,7 @@ public class DataInitializer {
         switch1.setLocation("DC1");
         switch1.setStatus(ResourceStatus.MAINTENANCE);
         switch1.setType(switchType);
+        switch1.setFederationId(switchType.getFederationId());
         resourceRepository.save(switch1);
         
         log.info("Sample resources created.");
@@ -166,7 +194,7 @@ public class DataInitializer {
                 "Mario", 
                 "Rossi", 
                 "admin123", 
-                Arrays.asList("ADMIN", "USER"),
+                Arrays.asList("ADMIN", "USER", "GLOBAL_ADMIN"),
                 "AU");
                 
         // Regular user
@@ -180,6 +208,27 @@ public class DataInitializer {
                 "RU");
                 
         log.info("Sample users ensured in Keycloak: Admin ID={}, User ID={}", adminKeycloakId, userKeycloakId);
+        
+        // Ensure users are in federations
+        List<String> federationIds = keycloakService.getAllFederations().stream()
+                .map(group -> group.getId())
+                .collect(Collectors.toList());
+        
+        if (!federationIds.isEmpty()) {
+            String firstFedId = federationIds.get(0);
+            
+            // Ensure admin is in all federations
+            for (String fedId : federationIds) {
+                if (!keycloakService.isUserInFederation(adminKeycloakId, fedId)) {
+                    keycloakService.addUserToFederation(adminKeycloakId, fedId);
+                }
+            }
+            
+            // Ensure regular user is in first federation
+            if (!keycloakService.isUserInFederation(userKeycloakId, firstFedId)) {
+                keycloakService.addUserToFederation(userKeycloakId, firstFedId);
+            }
+        }
     }
     
     /**
@@ -237,47 +286,83 @@ public class DataInitializer {
                 .orElseThrow(() -> new RuntimeException("Regular user not found"));
                 
         // Get sample resources
-        Resource server1 = resourceRepository.findAll().stream()
-                .filter(r -> r.getName().equals("Server 1"))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("Server 1 not found"));
-                
-        Resource gpu = resourceRepository.findAll().stream()
-                .filter(r -> r.getName().equals("NVIDIA Tesla"))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("GPU not found"));
+        List<Resource> resources = resourceRepository.findAll();
+        if (resources.isEmpty()) {
+            log.warn("No resources found. Events cannot be created.");
+            return;
+        }
+        
+        Resource resource1 = resources.get(0);
+        Resource resource2 = resources.size() > 1 ? resources.get(1) : resource1;
         
         // Create events
         ZonedDateTime now = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
         
-        Event event1 = new Event();
-        event1.setTitle("Development work");
-        event1.setDescription("Working on Project Alpha");
-        event1.setStart(now.plusDays(1).withHour(9).withMinute(0).withSecond(0));
-        event1.setEnd(now.plusDays(1).withHour(17).withMinute(0).withSecond(0));
-        event1.setResource(server1);
-        event1.setKeycloakId(adminKeycloakId);
-        eventRepository.save(event1);
+        // Check if users have access to these resources
+        boolean adminHasAccess1 = keycloakService.isUserInFederation(adminKeycloakId, resource1.getFederationId());
+        boolean userHasAccess2 = keycloakService.isUserInFederation(regularUserKeycloakId, resource2.getFederationId());
         
-        Event event2 = new Event();
-        event2.setTitle("ML Training");
-        event2.setDescription("Training a new model");
-        event2.setStart(now.plusDays(2).withHour(10).withMinute(0).withSecond(0));
-        event2.setEnd(now.plusDays(2).withHour(16).withMinute(0).withSecond(0));
-        event2.setResource(gpu);
-        event2.setKeycloakId(regularUserKeycloakId);
-        eventRepository.save(event2);
+        // Create event for admin
+        if (adminHasAccess1) {
+            Event event1 = new Event();
+            event1.setTitle("Development work");
+            event1.setDescription("Working on Project Alpha");
+            event1.setStart(now.plusDays(1).withHour(9).withMinute(0).withSecond(0));
+            event1.setEnd(now.plusDays(1).withHour(17).withMinute(0).withSecond(0));
+            event1.setResource(resource1);
+            event1.setKeycloakId(adminKeycloakId);
+            eventRepository.save(event1);
+            log.info("Created event for admin on resource {}", resource1.getName());
+        } else {
+            log.warn("Admin does not have access to resource {}. Make sure user is in federation {}.", 
+                resource1.getName(), resource1.getFederationId());
+        }
         
-        // Past event
-        Event event3 = new Event();
-        event3.setTitle("Previous Booking");
-        event3.setDescription("Completed work");
-        event3.setStart(now.minusDays(3).withHour(9).withMinute(0).withSecond(0));
-        event3.setEnd(now.minusDays(3).withHour(12).withMinute(0).withSecond(0));
-        event3.setResource(server1);
-        event3.setKeycloakId(regularUserKeycloakId);
-        eventRepository.save(event3);
+        // Create event for user
+        if (userHasAccess2) {
+            Event event2 = new Event();
+            event2.setTitle("ML Training");
+            event2.setDescription("Training a new model");
+            event2.setStart(now.plusDays(2).withHour(10).withMinute(0).withSecond(0));
+            event2.setEnd(now.plusDays(2).withHour(16).withMinute(0).withSecond(0));
+            event2.setResource(resource2);
+            event2.setKeycloakId(regularUserKeycloakId);
+            eventRepository.save(event2);
+            log.info("Created event for regular user on resource {}", resource2.getName());
+        } else {
+            // Try to find an accessible resource for the user
+            Optional<Resource> accessibleResource = resources.stream()
+                .filter(r -> keycloakService.isUserInFederation(regularUserKeycloakId, r.getFederationId()))
+                .findFirst();
+                
+            if (accessibleResource.isPresent()) {
+                Event event2 = new Event();
+                event2.setTitle("ML Training");
+                event2.setDescription("Training a new model");
+                event2.setStart(now.plusDays(2).withHour(10).withMinute(0).withSecond(0));
+                event2.setEnd(now.plusDays(2).withHour(16).withMinute(0).withSecond(0));
+                event2.setResource(accessibleResource.get());
+                event2.setKeycloakId(regularUserKeycloakId);
+                eventRepository.save(event2);
+                log.info("Created event for regular user on resource {}", accessibleResource.get().getName());
+            } else {
+                log.warn("Regular user does not have access to any resources. Make sure user is in at least one federation.");
+            }
+        }
         
-        log.info("Sample events created.");
+        // Past event for admin (if has access)
+        if (adminHasAccess1) {
+            Event event3 = new Event();
+            event3.setTitle("Previous Booking");
+            event3.setDescription("Completed work");
+            event3.setStart(now.minusDays(3).withHour(9).withMinute(0).withSecond(0));
+            event3.setEnd(now.minusDays(3).withHour(12).withMinute(0).withSecond(0));
+            event3.setResource(resource1);
+            event3.setKeycloakId(adminKeycloakId);
+            eventRepository.save(event3);
+            log.info("Created past event for admin");
+        }
+        
+        log.info("Sample events creation completed.");
     }
 }

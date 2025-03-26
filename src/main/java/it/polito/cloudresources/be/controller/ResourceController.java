@@ -74,7 +74,7 @@ public class ResourceController {
      * Create new resource
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Create resource", description = "Creates a new resource (Admin only)")
     public ResponseEntity<ResourceDTO> createResource(@Valid @RequestBody ResourceDTO resourceDTO, Authentication authentication) {
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
@@ -86,7 +86,7 @@ public class ResourceController {
      * Update existing resource
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Update resource", description = "Updates an existing resource (Admin only)")
     public ResponseEntity<ResourceDTO> updateResource(
             @PathVariable Long id, 
@@ -103,7 +103,7 @@ public class ResourceController {
      * Update resource status
      */
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Update resource status", description = "Updates the status of an existing resource (Admin only)")
     public ResponseEntity<ResourceDTO> updateResourceStatus(
             @PathVariable Long id, 
@@ -120,7 +120,7 @@ public class ResourceController {
      * Delete resource
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Delete resource", description = "Deletes an existing resource (Admin only)")
     public ResponseEntity<Object> deleteResource(@PathVariable Long id, Authentication authentication) {
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);

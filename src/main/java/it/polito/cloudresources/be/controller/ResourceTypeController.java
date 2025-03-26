@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.ResourceTypeDTO;
 import it.polito.cloudresources.be.service.FederationService;
+import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.ResourceTypeService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.validation.Valid;
@@ -30,6 +31,7 @@ public class ResourceTypeController {
 
     private final ResourceTypeService resourceTypeService;
     private final FederationService federationService;
+    private final KeycloakService keycloakService;
     private final ControllerUtils utils;
 
     /**
@@ -39,7 +41,10 @@ public class ResourceTypeController {
     @Operation(summary = "Get all resource types", description = "Retrieves all resource types")
     public ResponseEntity<List<ResourceTypeDTO>> getAllResourceTypes(Authentication authentication) {
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
-        
+        if(keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
+            return ResponseEntity.ok(resourceTypeService.getAllResourceTypes());
+        }
+
         List<String> federationIds = federationService.getUserFederations(currentUserKeycloakId)
         .stream().map(federationDto -> federationDto.getId()).collect(Collectors.toList());
 
@@ -61,7 +66,7 @@ public class ResourceTypeController {
      * Create new resource type
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Create resource type", description = "Creates a new resource type")
     public ResponseEntity<ResourceTypeDTO> createResourceType(
         @Valid @RequestBody ResourceTypeDTO resourceTypeDTO,
@@ -75,7 +80,7 @@ public class ResourceTypeController {
      * Update existing resource type
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Update resource type", description = "Updates an existing resource type")
     public ResponseEntity<ResourceTypeDTO> updateResourceType(
             @PathVariable Long id, 
@@ -91,7 +96,7 @@ public class ResourceTypeController {
      * Delete resource type
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Delete resource type", description = "Deletes an existing resource type")
     public ResponseEntity<Object> deleteResourceType(@PathVariable Long id, Authentication authentication) {
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);

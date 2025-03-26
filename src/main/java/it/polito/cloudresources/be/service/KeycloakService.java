@@ -786,7 +786,7 @@ public class KeycloakService {
     public boolean hasGlobalAdminRole(String userId) {
         try {
             List<String> roles = getUserRoles(userId);
-            return roles.contains("GLOBAL_ADMIN");
+            return roles.contains("global_admin");
         } catch (Exception e) {
             log.error("Error checking if user {} has GLOBAL_ADMIN role", userId, e);
             return false;

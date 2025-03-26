@@ -40,7 +40,6 @@ public class UserController {
      * Get all users (admin only)
      */
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Get all users", description = "Retrieves all users (Admin only)")
     public ResponseEntity<List<UserDTO>> getAllUsers() {
         return ResponseEntity.ok(userService.getAllUsers());
@@ -50,7 +49,6 @@ public class UserController {
      * Get user by ID (admin only)
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Get user by ID", description = "Retrieves a specific user by their ID (Admin only)")
     public ResponseEntity<UserDTO> getUserById(@PathVariable String id) {
         return userService.getUserById(id)
@@ -74,7 +72,6 @@ public class UserController {
      * Create a new user (admin only)
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Create user", description = "Creates a new user (Admin only)")
     public ResponseEntity<Object> createUser(@RequestBody Map<String, Object> userData) {
         try {
@@ -136,7 +133,6 @@ public class UserController {
      * Update an existing user (admin only)
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update user", description = "Updates an existing user (Admin only)")
     public ResponseEntity<Object> updateUser(@PathVariable String id, @RequestBody Map<String, Object> userData) {
         try {
@@ -197,7 +193,6 @@ public class UserController {
      * Delete user (admin only)
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete user", description = "Deletes an existing user (Admin only)")
     public ResponseEntity<Object> deleteUser(@PathVariable String id) {
         try {
@@ -223,7 +218,6 @@ public class UserController {
      * Get users by role (admin only)
      */
     @GetMapping("/by-role/{role}")
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Get users by role", description = "Retrieves users with a specific role (Admin only)")
     public ResponseEntity<List<UserDTO>> getUsersByRole(@PathVariable String role) {
         List<UserDTO> users = userService.getUsersByRole(role.toUpperCase());

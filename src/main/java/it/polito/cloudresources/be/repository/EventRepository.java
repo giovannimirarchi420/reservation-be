@@ -27,10 +27,14 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     List<Event> findByResource(Resource resource);
 
     /**
+     * Find events by multiple resource IDs (for federation-based filtering)
+     */
+    List<Event> findByResourceIdIn(List<Long> resourceIds);
+
+    /**
      * Find events by resource ID
      */
     List<Event> findByResourceId(Long resourceId);
-
     /**
      * Find events within a date range
      */
