@@ -49,6 +49,10 @@ public class ResourceService {
             return resourceMapper.toDto(resourceRepository.findByFederationIdIn(userFederations));
         }
     }
+
+    public List<ResourceDTO> getResourcesByFederation(String federationId) {
+        return resourceMapper.toDto(resourceRepository.findByFederationId(federationId));
+    }
     
     @Transactional
     public ResourceDTO createResource(ResourceDTO resourceDTO, String userId) {

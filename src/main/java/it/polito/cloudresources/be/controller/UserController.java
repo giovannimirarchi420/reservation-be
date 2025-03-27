@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.UserDTO;
+import it.polito.cloudresources.be.service.FederationService;
 import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.UserService;
 import it.polito.cloudresources.be.util.ControllerUtils;
@@ -15,6 +16,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,7 @@ import java.util.stream.Collectors;
 public class UserController {
 
     private final UserService userService;
+    private final FederationService federationService;
     private final KeycloakService keycloakService;
     private final ControllerUtils utils;
     private final SshKeyValidator sshKeyValidator;
@@ -40,9 +43,45 @@ public class UserController {
      * Get all users (admin only)
      */
     @GetMapping
-    @Operation(summary = "Get all users", description = "Retrieves all users (Admin only)")
-    public ResponseEntity<List<UserDTO>> getAllUsers() {
-        return ResponseEntity.ok(userService.getAllUsers());
+    @Operation(summary = "Get all users", description = "Retrieves all users with optional federation filtering")
+    public ResponseEntity<List<UserDTO>> getAllUsers(
+            @RequestParam(required = false) String federationId,
+            Authentication authentication) {
+        
+        String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+        
+        // If federationId is provided, check access and filter accordingly
+        if (federationId != null) {
+            // Check if user has access to this federation
+            if (!keycloakService.isUserInFederation(currentUserKeycloakId, federationId) && 
+                !keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            // Return users for this federation only
+            return ResponseEntity.ok(federationService.getUsersInFederation(federationId));
+        }
+        
+        // Default behavior: global admins see all, federation admins see their federation users
+        if (keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
+            return ResponseEntity.ok(userService.getAllUsers());
+        } else {
+            // Get all federations where user is an admin
+            List<String> adminFederations = keycloakService.getUserAdminFederations(currentUserKeycloakId);
+            
+            // If user is not an admin of any federation, return empty list
+            if (adminFederations.isEmpty()) {
+                return ResponseEntity.ok(new ArrayList<>());
+            }
+            
+            // Collect users from all federations where user is an admin
+            List<UserDTO> users = new ArrayList<>();
+            for (String fedId : adminFederations) {
+                users.addAll(federationService.getUsersInFederation(fedId));
+            }
+            
+            return ResponseEntity.ok(users);
+        }
     }
 
     /**
@@ -115,6 +154,16 @@ public class UserController {
             List<String> roles = (List<String>) userData.get("roles");
             if (roles != null) {
                 userDTO.setRoles(roles.stream().map(String::toUpperCase).collect(Collectors.toSet()));
+            }
+
+            if (userData.containsKey("federationId")) {
+                userDTO.setFederationId((String) userData.get("federationId") );
+                
+            } else {
+                return utils.createErrorResponse(
+                    HttpStatus.BAD_REQUEST, 
+                    "Federation id required"
+                );
             }
             
             // Create user

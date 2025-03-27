@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 public class ResourceController {
 
     private final ResourceService resourceService;
+    private final KeycloakService keycloakService;
     private final FederationService federationService;
     private final ControllerUtils utils;
 
@@ -40,15 +41,27 @@ public class ResourceController {
      * Get all resources
      */
     @GetMapping
-    @Operation(summary = "Get all resources", description = "Retrieves all resources with optional filtering by status")
+    @Operation(summary = "Get all resources", description = "Retrieves all resources with optional filtering by status, type, or federation")
     public ResponseEntity<List<ResourceDTO>> getAllResources(
             @RequestParam(required = false) ResourceStatus status,
             @RequestParam(required = false) Long typeId,
+            @RequestParam(required = false) String federationId,
             Authentication authentication) {
 
-        List<ResourceDTO> resources;
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
-        if (status != null) {
+        List<ResourceDTO> resources;
+        
+        // Check federation access if federationId is provided
+        if (federationId != null) {
+            // Check if user has access to this federation
+            if (!keycloakService.isUserInFederation(currentUserKeycloakId, federationId) && 
+                !keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            // Get resources from this specific federation
+            resources = resourceService.getResourcesByFederation(federationId);
+        } else if (status != null) {
             resources = resourceService.getResourcesByStatus(status);
         } else if (typeId != null) {
             resources = resourceService.getResourcesByType(typeId);

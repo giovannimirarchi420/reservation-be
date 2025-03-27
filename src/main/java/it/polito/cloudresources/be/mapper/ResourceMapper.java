@@ -37,6 +37,7 @@ public class ResourceMapper implements EntityMapper<ResourceDTO, Resource> {
         resource.setSpecs(dto.getSpecs());
         resource.setLocation(dto.getLocation());
         resource.setStatus(dto.getStatus());
+        resource.setFederationId(dto.getFederationId());
         
         // Set the resource type
         if (dto.getTypeId() != null) {
@@ -64,6 +65,7 @@ public class ResourceMapper implements EntityMapper<ResourceDTO, Resource> {
         dto.setSpecs(entity.getSpecs());
         dto.setLocation(entity.getLocation());
         dto.setStatus(entity.getStatus());
+        dto.setFederationId(entity.getFederationId());
         
         // Set type information
         if (entity.getType() != null) {

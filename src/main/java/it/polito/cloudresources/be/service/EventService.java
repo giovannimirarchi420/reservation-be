@@ -68,6 +68,29 @@ public class EventService {
         }
     }
 
+    public List<EventDTO> getEventsByFederation(String federationId, String userId) {
+        // Validate user has access
+        if (!keycloakService.isUserInFederation(userId, federationId) && 
+            !keycloakService.hasGlobalAdminRole(userId)) {
+            throw new AccessDeniedException("User does not have access to this federation");
+        }
+        
+        // Get resources in this federation
+        List<Resource> federationResources = resourceRepository.findByFederationId(federationId);
+        
+        if (federationResources.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // Get events for these resources
+        List<Long> resourceIds = federationResources.stream()
+            .map(Resource::getId)
+            .collect(Collectors.toList());
+            
+        List<Event> events = eventRepository.findByResourceIdIn(resourceIds);
+        return eventMapper.toDto(events);
+    }
+
     /**
      * Get event by ID
      */

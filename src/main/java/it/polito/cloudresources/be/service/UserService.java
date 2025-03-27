@@ -70,7 +70,8 @@ public class UserService {
                 password,
                 rolesList,
                 userDTO.getSshPublicKey(),
-                userDTO.getAvatar()
+                userDTO.getAvatar(),
+                userDTO.getFederationId()
         );
         
         if (userId == null) {

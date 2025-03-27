@@ -39,6 +39,9 @@ public class UserDTO {
     private String sshPublicKey;
 
     private Set<String> roles;
+
+    @NotBlank(message = "A federation must be provided")
+    private String federationId;
     
     /**
      * Get full name from firstName and lastName

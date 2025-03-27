@@ -7,6 +7,7 @@ import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.service.EventService;
+import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -33,6 +34,7 @@ import java.util.List;
 public class EventController {
 
     private final EventService eventService;
+    private final KeycloakService  keycloakService;
     private final ControllerUtils utils;
 
     /**
@@ -44,13 +46,21 @@ public class EventController {
             @RequestParam(required = false) Long resourceId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime endDate,
+            @RequestParam(required = false) String federationId,
             Authentication authentication) {
 
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
         List<EventDTO> events;
         
         try {
-            if (resourceId != null) {
+            if (federationId != null) {
+                // Check if user has access to this federation
+                if (!keycloakService.isUserInFederation(currentUserKeycloakId, federationId) && 
+                    !keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+                }
+                events = eventService.getEventsByFederation(federationId, currentUserKeycloakId);
+            } else if (resourceId != null) {
                 events = eventService.getEventsByResource(resourceId, currentUserKeycloakId);
             } else if (startDate != null && endDate != null) {
                 events = eventService.getEventsByDateRange(startDate, endDate, currentUserKeycloakId);

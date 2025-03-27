@@ -16,6 +16,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -38,16 +39,33 @@ public class ResourceTypeController {
      * Get all resource types
      */
     @GetMapping
-    @Operation(summary = "Get all resource types", description = "Retrieves all resource types")
-    public ResponseEntity<List<ResourceTypeDTO>> getAllResourceTypes(Authentication authentication) {
+    @Operation(summary = "Get all resource types", description = "Retrieves all resource types with optional federation filtering")
+    public ResponseEntity<List<ResourceTypeDTO>> getAllResourceTypes(
+            @RequestParam(required = false) String federationId,
+            Authentication authentication) {
+        
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
-        if(keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
+        
+        // If federationId is provided, check access and filter accordingly
+        if (federationId != null) {
+            // Check if user has access to this federation
+            if (!keycloakService.isUserInFederation(currentUserKeycloakId, federationId) && 
+                !keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            // Return resource types for this federation only
+            return ResponseEntity.ok(resourceTypeService.getAllResourceTypes(Arrays.asList(federationId)));
+        }
+        
+        // Default behavior: return all accessible resource types
+        if (keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
             return ResponseEntity.ok(resourceTypeService.getAllResourceTypes());
         }
-
+    
         List<String> federationIds = federationService.getUserFederations(currentUserKeycloakId)
-        .stream().map(federationDto -> federationDto.getId()).collect(Collectors.toList());
-
+            .stream().map(federationDto -> federationDto.getId()).collect(Collectors.toList());
+    
         return ResponseEntity.ok(resourceTypeService.getAllResourceTypes(federationIds));
     }
 
@@ -66,11 +84,12 @@ public class ResourceTypeController {
      * Create new resource type
      */
     @PostMapping
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
+    @PreAuthorize("hasAnyRole('FEDERATION_ADMIN', 'GLOBAL_ADMIN')")
     @Operation(summary = "Create resource type", description = "Creates a new resource type")
     public ResponseEntity<ResourceTypeDTO> createResourceType(
         @Valid @RequestBody ResourceTypeDTO resourceTypeDTO,
         Authentication authentication) {
+        System.out.println("TEST: " + resourceTypeDTO.toString());
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
         ResourceTypeDTO createdType = resourceTypeService.createResourceType(resourceTypeDTO, currentUserKeycloakId);
         return ResponseEntity.status(HttpStatus.CREATED).body(createdType);
@@ -80,7 +99,7 @@ public class ResourceTypeController {
      * Update existing resource type
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
+    @PreAuthorize("hasAnyRole('FEDERATION_ADMIN', 'GLOBAL_ADMIN')")
     @Operation(summary = "Update resource type", description = "Updates an existing resource type")
     public ResponseEntity<ResourceTypeDTO> updateResourceType(
             @PathVariable Long id, 
@@ -96,7 +115,7 @@ public class ResourceTypeController {
      * Delete resource type
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
+    @PreAuthorize("hasAnyRole('FEDERATION_ADMIN', 'GLOBAL_ADMIN')")
     @Operation(summary = "Delete resource type", description = "Deletes an existing resource type")
     public ResponseEntity<Object> deleteResourceType(@PathVariable Long id, Authentication authentication) {
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);

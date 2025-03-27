@@ -20,6 +20,7 @@ public class ResourceTypeMapper implements EntityMapper<ResourceTypeDTO, Resourc
         resourceType.setId(dto.getId());
         resourceType.setName(dto.getName());
         resourceType.setColor(dto.getColor());
+        resourceType.setFederationId(dto.getFederationId());
         
         return resourceType;
     }

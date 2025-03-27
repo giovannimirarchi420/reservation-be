@@ -266,7 +266,8 @@ public class DataInitializer {
                     password, 
                     roles,
                     null, // No SSH key initially
-                    avatar);
+                    avatar,
+                    null);
         }
     }
     

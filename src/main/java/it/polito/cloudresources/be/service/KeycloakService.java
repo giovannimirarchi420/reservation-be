@@ -133,7 +133,7 @@ public class KeycloakService {
      */
     @Transactional
     public String createUser(String username, String email, String firstName, String lastName, 
-                             String password, List<String> roles, String sshKey, String avatar) {
+                             String password, List<String> roles, String sshKey, String avatar, String federationId) {
         try {
             log.debug("Attempting to create user: username={}, email={}, firstName={}, lastName={}", 
                     username, email, firstName, lastName);
@@ -239,6 +239,8 @@ public class KeycloakService {
                 }
             }
 
+            usersResource.get(userId).joinGroup(federationId);
+            
             return userId;
         } catch (Exception e) {
             log.error("Error creating user in Keycloak", e);
@@ -251,7 +253,7 @@ public class KeycloakService {
      */
     @Transactional
     public String createUser(String username, String email, String firstName, String lastName, String password, List<String> roles) {
-        return createUser(username, email, firstName, lastName, password, roles, null, null);
+        return createUser(username, email, firstName, lastName, password, roles, null, null, null);
     }
 
     /**

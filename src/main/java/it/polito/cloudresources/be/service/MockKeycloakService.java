@@ -103,7 +103,7 @@ public class MockKeycloakService extends KeycloakService {
 
     @Override
     public String createUser(String username, String email, String firstName, String lastName, 
-                             String password, List<String> roles, String sshKey, String avatar) {
+                             String password, List<String> roles, String sshKey, String avatar, String federationId) {
         String userId = UUID.randomUUID().toString();
 
         UserRepresentation user = new UserRepresentation();
@@ -135,7 +135,7 @@ public class MockKeycloakService extends KeycloakService {
 
     @Override
     public String createUser(String username, String email, String firstName, String lastName, String password, List<String> roles) {
-        return createUser(username, email, firstName, lastName, password, roles, null, null);
+        return createUser(username, email, firstName, lastName, password, roles, null, null, null);
     }
 
     @Override
