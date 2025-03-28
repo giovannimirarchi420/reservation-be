@@ -1,18 +1,20 @@
 package it.polito.cloudresources.be.config.dev;
 
+import java.util.HashSet;
 import java.util.List;
 
-import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
+import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import it.polito.cloudresources.be.service.KeycloakService;
+import it.polito.cloudresources.be.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -24,109 +26,137 @@ public class FederationDataInitializer {
     private final KeycloakService keycloakService;
     private final ResourceRepository resourceRepository;
     private final ResourceTypeRepository resourceTypeRepository;
-    
+    private final UserService userService;
+
     @Bean
     public CommandLineRunner initFederations() {
         return arg -> {
             log.info("Initializing sample federations...");
-            
+
             // Ensure roles exist
             keycloakService.ensureRealmRoles("GLOBAL_ADMIN", "FEDERATION_ADMIN", "USER");
-            
+
             // Create sample federations
             String poliToId = keycloakService.createFederation("Politecnico di Torino", "Turin Technical University");
             String uniRomaId = keycloakService.createFederation("Università di Roma", "Rome University");
             String uniMiId = keycloakService.createFederation("Università di Milano", "Milan University");
-            
+
             log.info("Created federations with IDs: {}, {}, {}", poliToId, uniRomaId, uniMiId);
-            
-            // Get admin user
-            String adminId = keycloakService.getUserByUsername("admin1")
-                    .map(UserRepresentation::getId)
-                    .orElseGet(() -> {
-                        // Create admin if doesn't exist
-                        return keycloakService.createUser(
-                                "admin1", 
-                                "admin@example.com", 
-                                "Global", 
-                                "Admin", 
-                                "admin123", 
-                                List.of("GLOBAL_ADMIN", "ADMIN", "USER"));
-                    });
-            
+
+            // Create global admin user if needed
+            String adminId = createAdminUser(poliToId);
+
             // Add admin to all federations
             keycloakService.addUserToFederation(adminId, poliToId);
             keycloakService.addUserToFederation(adminId, uniRomaId);
             keycloakService.addUserToFederation(adminId, uniMiId);
-            
-            // Create a regular user if it doesn't exist
-            String userId = keycloakService.getUserByUsername("user1")
-                    .map(UserRepresentation::getId)
-                    .orElseGet(() -> {
-                        // Create user if doesn't exist
-                        return keycloakService.createUser(
-                                "user1", 
-                                "user@example.com", 
-                                "Regular", 
-                                "User", 
-                                "user123", 
-                                List.of("USER"));
-                    });
-            
+
+            // Create a regular user if needed
+            String userId = createRegularUser(poliToId);
+
             // Add regular user to PoliTo only
             keycloakService.addUserToFederation(userId, poliToId);
-            
+
             // Create federation admins
-            String poliToAdminId = keycloakService.getUserByUsername("polito_admin")
-                    .map(UserRepresentation::getId)
-                    .orElseGet(() -> {
-                        return keycloakService.createUser(
-                                "polito_admin", 
-                                "polito_admin@example.com", 
-                                "Polito", 
-                                "Admin", 
-                                "admin123", 
-                                List.of("FEDERATION_ADMIN", "USER"));
-                    });
-            
-            String uniRomaAdminId = keycloakService.getUserByUsername("uniroma_admin")
-                    .map(UserRepresentation::getId)
-                    .orElseGet(() -> {
-                        return keycloakService.createUser(
-                                "uniroma_admin", 
-                                "uniroma_admin@example.com", 
-                                "UniRoma", 
-                                "Admin", 
-                                "admin123", 
-                                List.of("FEDERATION_ADMIN", "USER"));
-                    });
-            
-            // Add federation admins to their respective federations
-            keycloakService.addUserToFederation(poliToAdminId, poliToId);
-            keycloakService.makeFederationAdmin(poliToAdminId, poliToId);
-            
-            keycloakService.addUserToFederation(uniRomaAdminId, uniRomaId);
-            keycloakService.makeFederationAdmin(uniRomaAdminId, uniRomaId);
-            
+            String poliToAdminId = createFederationAdmin("polito_admin", poliToId);
+            String uniRomaAdminId = createFederationAdmin("uniroma_admin", uniRomaId);
+
             // Update resource types and resources to include federation IDs
             updateResourceTypes(poliToId, uniRomaId, uniMiId);
-            
+
             log.info("Sample federations initialized.");
         };
     }
-    
+
+    /**
+     * Create global admin user
+     */
+    private String createAdminUser(String federationId) {
+        // Check if admin already exists
+        return userService.getUserByUsername("admin1")
+                .map(UserDTO::getId)
+                .orElseGet(() -> {
+                    // Create admin using UserDTO
+                    UserDTO adminDTO = UserDTO.builder()
+                            .username("admin1")
+                            .email("admin@example.com")
+                            .firstName("Global")
+                            .lastName("Admin")
+                            .roles(new HashSet<>(List.of("GLOBAL_ADMIN", "ADMIN", "USER")))
+                            .avatar("GA")
+                            .federationId(federationId)
+                            .build();
+
+                    UserDTO createdAdmin = userService.createUser(adminDTO, "admin123");
+                    return createdAdmin.getId();
+                });
+    }
+
+    /**
+     * Create regular user
+     */
+    private String createRegularUser(String federationId) {
+        // Check if user already exists
+        return userService.getUserByUsername("user1")
+                .map(UserDTO::getId)
+                .orElseGet(() -> {
+                    // Create user using UserDTO
+                    UserDTO userDTO = UserDTO.builder()
+                            .username("user1")
+                            .email("user@example.com")
+                            .firstName("Regular")
+                            .lastName("User")
+                            .roles(new HashSet<>(List.of("USER")))
+                            .avatar("RU")
+                            .federationId(federationId)
+                            .build();
+
+                    UserDTO createdUser = userService.createUser(userDTO, "user123");
+                    return createdUser.getId();
+                });
+    }
+
+    /**
+     * Create federation admin user
+     */
+    private String createFederationAdmin(String username, String federationId) {
+        // Check if admin already exists
+        return userService.getUserByUsername(username)
+                .map(UserDTO::getId)
+                .orElseGet(() -> {
+                    // Create federation admin using UserDTO
+                    UserDTO adminDTO = UserDTO.builder()
+                            .username(username)
+                            .email(username + "@example.com")
+                            .firstName(username.substring(0, 1).toUpperCase() + username.substring(1).split("_")[0])
+                            .lastName("Admin")
+                            .roles(new HashSet<>(List.of("FEDERATION_ADMIN", "USER")))
+                            .avatar(username.substring(0, 1).toUpperCase() + "A")
+                            .federationId(federationId)
+                            .build();
+
+                    UserDTO createdAdmin = userService.createUser(adminDTO, "admin123");
+                    String adminId = createdAdmin.getId();
+
+                    // Make the user a federation admin
+                    keycloakService.makeFederationAdmin(adminId, federationId);
+
+                    return adminId;
+                });
+    }
+
     /**
      * Updates existing resource types and resources to include federation IDs
      */
     private void updateResourceTypes(String poliToId, String uniRomaId, String uniMiId) {
         List<ResourceType> resourceTypes = resourceTypeRepository.findAll();
-        
+
         if (!resourceTypes.isEmpty()) {
             // Assign the first resource type to PoliTo, second to UniRoma, rest to Milano
             for (int i = 0; i < resourceTypes.size(); i++) {
                 ResourceType resourceType = resourceTypes.get(i);
                 String fedId;
-                
+
                 if (i == 0) {
                     fedId = poliToId;
                 } else if (i == 1) {
@@ -134,19 +164,19 @@ public class FederationDataInitializer {
                 } else {
                     fedId = uniMiId;
                 }
-                
+
                 resourceType.setFederationId(fedId);
                 resourceTypeRepository.save(resourceType);
-                
+
                 // Update all resources of this type to match the federation
                 List<Resource> resources = resourceRepository.findByTypeId(resourceType.getId());
                 for (Resource resource : resources) {
                     resource.setFederationId(fedId);
                     resourceRepository.save(resource);
                 }
-                
-                log.info("Updated resource type {} and {} resources to federation {}", 
-                    resourceType.getName(), resources.size(), fedId);
+
+                log.info("Updated resource type {} and {} resources to federation {}",
+                        resourceType.getName(), resources.size(), fedId);
             }
         }
     }

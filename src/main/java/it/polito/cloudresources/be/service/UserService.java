@@ -65,12 +65,9 @@ public class UserService {
      * @return The created user
      */
     public UserDTO createUser(UserDTO userDTO, String password) {
-        // Collect roles
-        List<String> rolesList = userDTO.getRoles() != null ?
-                new ArrayList<>(userDTO.getRoles()) : new ArrayList<>();
 
         // Create user in Keycloak
-        String userId = keycloakService.createUser(userDTO, password);
+        String userId = keycloakService.createUser(userDTO, password, userDTO.getRoles());
 
         if (userId == null) {
             throw new RuntimeException("Failed to create user in Keycloak");
