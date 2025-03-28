@@ -18,7 +18,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -47,7 +46,7 @@ public class DataInitializer {
      */
     @Bean
     public CommandLineRunner initData() {
-        return _ -> {
+        return arg -> {
             log.info("Initializing sample data...");
             
             // Create resource types if none exist

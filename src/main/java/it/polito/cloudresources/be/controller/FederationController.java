@@ -21,7 +21,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.FederationDTO;
-import it.polito.cloudresources.be.dto.UserDTO;
+import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.service.FederationService;
 import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.util.ControllerUtils;

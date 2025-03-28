@@ -1,5 +1,6 @@
 package it.polito.cloudresources.be.service;
 
+import it.polito.cloudresources.be.dto.users.UserDTO;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
@@ -129,131 +130,47 @@ public class KeycloakService {
     }
 
     /**
-     * Create a new user in Keycloak with all attributes
+     * Creates a new user in Keycloak from a UserDTO
+     *
+     * @param userDTO the user data transfer object
+     * @param password the user's password
+     * @param roles the roles to assign to the user
+     * @return the ID of the created user, or null if creation failed
      */
     @Transactional
-    public String createUser(String username, String email, String firstName, String lastName, 
-                             String password, List<String> roles, String sshKey, String avatar, String federationId) {
+    public String createUser(UserDTO userDTO, String password, Set<String> roles) {
         try {
-            log.debug("Attempting to create user: username={}, email={}, firstName={}, lastName={}", 
-                    username, email, firstName, lastName);
-            
-            // Create a completely new UserRepresentation object
-            UserRepresentation user = new UserRepresentation();
-            
-            // Set ONLY the basic fields, avoiding any problematic fields
-            Map<String, List<String>> attributes = new HashMap<>();
-            
-            // Add SSH key and avatar as attributes if provided
-            if (sshKey != null && !sshKey.isEmpty()) {
-                attributes.put(ATTR_SSH_KEY, Collections.singletonList(sshKey));
-            }
-            
-            if (avatar != null && !avatar.isEmpty()) {
-                attributes.put(ATTR_AVATAR, Collections.singletonList(avatar));
-            }
-            
-            user.setUsername(username);
-            user.setEmail(email);
-            user.setFirstName(firstName);
-            user.setLastName(lastName);
-            user.setEnabled(true);
-            user.setEmailVerified(true);
-            user.setAttributes(attributes);            
-            
-            // Verify that all necessary fields are present
-            if (username == null || username.trim().isEmpty()) {
-                log.error("User creation failed: username missing or empty");
-                return null;
-            }
-            if (email == null || email.trim().isEmpty()) {
-                log.error("User creation failed: email missing or empty");
-                return null;
-            }
-            
-            // Create user
-            UsersResource usersResource = getRealmResource().users();
-            
-            // Detailed log of the user representation
-            log.debug("User representation: {}", user);
-            
-            Response response = usersResource.create(user);
-            log.debug("User creation response - Status: {}, Message: {}", 
-                    response.getStatus(), response.getStatusInfo().getReasonPhrase());
-                    
-            if (response.getStatus() != 201) {
-                if (response.hasEntity()) {
-                    // Try to read the response body to better understand the error
-                    String responseBody = response.readEntity(String.class);
-                    log.error("Error details from Keycloak: {}", responseBody);
-                }
-                log.error("User creation failed in Keycloak: {} ({})", 
-                        response.getStatusInfo().getReasonPhrase(), response.getStatus());
+            log.debug("Attempting to create user: username={}, email={}, firstName={}, lastName={}",
+                    userDTO.getUsername(), userDTO.getEmail(), userDTO.getFirstName(), userDTO.getLastName());
+
+            // Create user representation
+            UserRepresentation user = createUserRepresentation(userDTO);
+
+            // Create user in Keycloak
+            String userId = createUserInKeycloak(user);
+            if (userId == null) {
                 return null;
             }
 
-            // Get created user ID
-            String userId = response.getLocation().getPath().replaceAll(".*/([^/]+)$", "$1");
-            log.info("User created in Keycloak with ID: {}", userId);
-
-            // Set the password
-            try {
-                CredentialRepresentation credential = new CredentialRepresentation();
-                credential.setType(CredentialRepresentation.PASSWORD);
-                credential.setValue(password);
-                credential.setTemporary(false);
-                
-                usersResource.get(userId).resetPassword(credential);
-                log.debug("Password successfully set for user: {}", userId);
-            } catch (Exception e) {
-                log.error("Error setting password for user: {}", userId, e);
-                // Don't return null here, the user has been created even if the password hasn't been set
+            // Set user password
+            if (!setUserPassword(userId, password)) {
+                log.warn("Password could not be set for user: {}", userId);
+                // Continue anyway as the user has been created
             }
 
-            // Assign roles to the user
+            // Assign roles to user
             if (roles != null && !roles.isEmpty()) {
-                try {
-                    log.debug("Attempting to assign roles: {} to user: {}", roles, userId);
-                    List<RoleRepresentation> realmRoles = new ArrayList<>();
-
-                    for (String roleName : roles) {
-                        roleName = roleName.toLowerCase();
-                        RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
-                        if (role != null) {
-                            realmRoles.add(role);
-                            log.debug("Role found and added: {}", roleName);
-                        } else {
-                            log.warn("Role not found: {}", roleName);
-                        }
-                    }
-
-                    if (!realmRoles.isEmpty()) {
-                        getRealmResource().users().get(userId).roles().realmLevel().add(realmRoles);
-                        log.debug("Roles successfully assigned to user: {}", userId);
-                    } else {
-                        log.warn("No valid roles to assign to user: {}", userId);
-                    }
-                } catch (Exception e) {
-                    log.error("Error assigning roles to user: {}", userId, e);
-                    // Don't return null here, the user has been created even if the roles haven't been assigned
-                }
+                assignRolesToUser(userId, roles);
             }
 
-            usersResource.get(userId).joinGroup(federationId);
-            
+            // Add user to federation
+            addUserToFederation(userId, userDTO.getFederationId());
+
             return userId;
         } catch (Exception e) {
             log.error("Error creating user in Keycloak", e);
             return null;
         }
-    }
-
-    /**
-     * Create a new user in Keycloak
-     */
-    @Transactional
-    public String createUser(String username, String email, String firstName, String lastName, String password, List<String> roles) {
-        return createUser(username, email, firstName, lastName, password, roles, null, null, null);
     }
 
     /**
@@ -642,9 +559,13 @@ public class KeycloakService {
             return false;
         }
     }
-    
+
     /**
-     * Add a user to a federation (group)
+     * Adds a user to a federation
+     *
+     * @param userId the user ID
+     * @param federationId the federation ID
+     * @return true if user was added to federation successfully, false otherwise
      */
     public boolean addUserToFederation(String userId, String federationId) {
         try {
@@ -926,4 +847,145 @@ public class KeycloakService {
             return Collections.emptyList();
         }
     }
+
+    /**
+     * Creates a UserRepresentation object from a UserDTO
+     *
+     * @param userDTO the user data transfer object
+     * @return the created UserRepresentation
+     */
+    private UserRepresentation createUserRepresentation(UserDTO userDTO) {
+        UserRepresentation user = new UserRepresentation();
+
+        // Set basic fields
+        user.setUsername(userDTO.getUsername());
+        user.setEmail(userDTO.getEmail());
+        user.setFirstName(userDTO.getFirstName());
+        user.setLastName(userDTO.getLastName());
+        user.setEnabled(true);
+        user.setEmailVerified(true);
+
+        // Set attributes
+        Map<String, List<String>> attributes = createUserAttributes(userDTO);
+        user.setAttributes(attributes);
+
+        return user;
+    }
+
+    /**
+     * Creates a map of user attributes from a UserDTO
+     *
+     * @param userDTO the user data transfer object
+     * @return the map of user attributes
+     */
+    private Map<String, List<String>> createUserAttributes(UserDTO userDTO) {
+        Map<String, List<String>> attributes = new HashMap<>();
+
+        // Add SSH key if provided
+        if (userDTO.getSshPublicKey() != null && !userDTO.getSshPublicKey().isEmpty()) {
+            attributes.put(ATTR_SSH_KEY, Collections.singletonList(userDTO.getSshPublicKey()));
+        }
+
+        // Add avatar if provided
+        if (userDTO.getAvatar() != null && !userDTO.getAvatar().isEmpty()) {
+            attributes.put(ATTR_AVATAR, Collections.singletonList(userDTO.getAvatar()));
+        }
+
+        return attributes;
+    }
+
+    /**
+     * Creates the user in Keycloak
+     *
+     * @param user the user representation
+     * @return the ID of the created user, or null if creation failed
+     */
+    private String createUserInKeycloak(UserRepresentation user) {
+        UsersResource usersResource = getRealmResource().users();
+
+        // Detailed log of the user representation
+        log.debug("User representation: {}", user);
+
+        Response response = usersResource.create(user);
+        log.debug("User creation response - Status: {}, Message: {}",
+                response.getStatus(), response.getStatusInfo().getReasonPhrase());
+
+        if (response.getStatus() != 201) {
+            if (response.hasEntity()) {
+                // Try to read the response body to better understand the error
+                String responseBody = response.readEntity(String.class);
+                log.error("Error details from Keycloak: {}", responseBody);
+            }
+            log.error("User creation failed in Keycloak: {} ({})",
+                    response.getStatusInfo().getReasonPhrase(), response.getStatus());
+            return null;
+        }
+
+        // Get created user ID
+        String userId = response.getLocation().getPath().replaceAll(".*/([^/]+)$", "$1");
+        log.info("User created in Keycloak with ID: {}", userId);
+
+        return userId;
+    }
+
+    /**
+     * Sets the password for a user
+     *
+     * @param userId the user ID
+     * @param password the password to set
+     * @return true if password was set successfully, false otherwise
+     */
+    private boolean setUserPassword(String userId, String password) {
+        try {
+            CredentialRepresentation credential = new CredentialRepresentation();
+            credential.setType(CredentialRepresentation.PASSWORD);
+            credential.setValue(password);
+            credential.setTemporary(false);
+
+            getRealmResource().users().get(userId).resetPassword(credential);
+            log.debug("Password successfully set for user: {}", userId);
+            return true;
+        } catch (Exception e) {
+            log.error("Error setting password for user: {}", userId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Assigns roles to a user
+     *
+     * @param userId the user ID
+     * @param roles the roles to assign
+     * @return true if roles were assigned successfully, false otherwise
+     */
+    private boolean assignRolesToUser(String userId, Set<String> roles) {
+        try {
+            log.debug("Attempting to assign roles: {} to user: {}", roles, userId);
+            List<RoleRepresentation> realmRoles = new ArrayList<>();
+
+            for (String roleName : roles) {
+                roleName = roleName.toLowerCase();
+                RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
+                if (role != null) {
+                    realmRoles.add(role);
+                    log.debug("Role found and added: {}", roleName);
+                } else {
+                    log.warn("Role not found: {}", roleName);
+                }
+            }
+
+            if (!realmRoles.isEmpty()) {
+                getRealmResource().users().get(userId).roles().realmLevel().add(realmRoles);
+                log.debug("Roles successfully assigned to user: {}", userId);
+                return true;
+            } else {
+                log.warn("No valid roles found to assign to user: {}", userId);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("Error assigning roles to user: {}", userId, e);
+            return false;
+        }
+    }
+
 }

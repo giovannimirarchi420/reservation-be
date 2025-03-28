@@ -1,6 +1,6 @@
 package it.polito.cloudresources.be.mapper;
 
-import it.polito.cloudresources.be.dto.UserDTO;
+import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.service.KeycloakService;
 import lombok.RequiredArgsConstructor;
 import org.keycloak.representations.idm.UserRepresentation;

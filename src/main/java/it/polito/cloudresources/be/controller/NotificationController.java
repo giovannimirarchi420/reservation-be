@@ -18,7 +18,6 @@ import java.util.List;
 
 /**
  * REST API controller for managing user notifications
- * Now using Keycloak IDs instead of User entities
  */
 @RestController
 @RequestMapping("/notifications")

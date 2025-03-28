@@ -18,7 +18,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -152,7 +151,7 @@ public class ResourceController {
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
         
         List<String> federationIds = federationService.getUserFederations(currentUserKeycloakId)
-        .stream().map(federationDto -> federationDto.getId()).collect(Collectors.toList());
+        .stream().map(FederationDTO::getId).collect(Collectors.toList());
 
         List<ResourceDTO> resources = resourceService.searchResources(query, federationIds);
         return ResponseEntity.ok(resources);

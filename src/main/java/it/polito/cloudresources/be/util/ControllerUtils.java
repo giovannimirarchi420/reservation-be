@@ -28,17 +28,6 @@ public class ControllerUtils {
     }
 
     /**
-     * Checks if the current user has admin role
-     *
-     * @param authentication The authentication object
-     * @return true if the user has ROLE_ADMIN authority
-     */
-    public boolean isAdmin(Authentication authentication) {
-        return authentication.getAuthorities().stream()
-                .anyMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"));
-    }
-
-    /**
      * Creates an error response with the given status and message
      *
      * @param status The HTTP status code

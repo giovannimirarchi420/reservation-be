@@ -1,7 +1,7 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.FederationDTO;
-import it.polito.cloudresources.be.dto.UserDTO;
+import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.mapper.FederationMapper;
 import it.polito.cloudresources.be.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;

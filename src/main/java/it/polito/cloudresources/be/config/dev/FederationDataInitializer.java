@@ -27,7 +27,7 @@ public class FederationDataInitializer {
     
     @Bean
     public CommandLineRunner initFederations() {
-        return _ -> {
+        return arg -> {
             log.info("Initializing sample federations...");
             
             // Ensure roles exist

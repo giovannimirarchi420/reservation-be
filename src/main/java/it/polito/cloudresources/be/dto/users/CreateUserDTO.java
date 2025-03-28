@@ -1,23 +1,24 @@
-package it.polito.cloudresources.be.dto;
+package it.polito.cloudresources.be.dto.users;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Set;
 
 /**
- * DTO for User data transfer, now based entirely on Keycloak
+ * DTO for user creation
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserDTO {
-    private String id;
-
+@Builder(builderMethodName = "builder")
+public class CreateUserDTO {
     @NotBlank(message = "Username is required")
     @Size(max = 50, message = "Username cannot exceed 50 characters")
     private String username;
@@ -34,19 +35,23 @@ public class UserDTO {
     @Email(message = "Invalid email format")
     private String email;
 
+    @NotBlank(message = "Password is required")
+    private String password;
+
     private String avatar;
-    
+
     private String sshPublicKey;
 
+    @NotNull(message = "Roles are required")
     private Set<String> roles;
 
-    @NotBlank(message = "A federation must be provided")
+    @NotBlank(message = "Federation ID is required")
     private String federationId;
-    
+
     /**
-     * Get full name from firstName and lastName
+     * Fluent builder for CreateUserDTO
      */
-    public String getFullName() {
-        return firstName + " " + lastName;
+    public static class CreateUserDTOBuilder {
+        // Lombok will generate the builder methods
     }
 }
