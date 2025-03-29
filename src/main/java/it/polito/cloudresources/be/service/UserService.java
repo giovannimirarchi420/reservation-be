@@ -1,5 +1,6 @@
 package it.polito.cloudresources.be.service;
 
+import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.mapper.UserMapper;
 import it.polito.cloudresources.be.model.AuditLog;
@@ -19,6 +20,7 @@ public class UserService {
 
     private final KeycloakService keycloakService;
     private final AuditLogService auditLogService;
+    private final EventService eventService;
     private final UserMapper userMapper;
 
     /**
@@ -150,18 +152,24 @@ public class UserService {
      * @param id The Keycloak user ID to delete
      * @return true if deleted successfully, false otherwise
      */
-    public boolean deleteUser(String id) {
+    public boolean deleteUser(String deleteKeycloakId, String currentKeycloakId) {
         // Get username for logging before deletion
-        Optional<UserRepresentation> user = keycloakService.getUserById(id);
+        Optional<UserRepresentation> user = keycloakService.getUserById(deleteKeycloakId);
+        
+        List<EventDTO> userEventsToDelete = eventService.getEventsByUserKeycloakId(deleteKeycloakId, currentKeycloakId);
+        
+        for(EventDTO event : userEventsToDelete) {
+            eventService.deleteEvent(event.getId(), currentKeycloakId);
+        }
 
-        boolean deleted = keycloakService.deleteUser(id);
+        boolean deleted = keycloakService.deleteUser(deleteKeycloakId);
 
         if (deleted) {
             // Log the action
             auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                     AuditLog.LogAction.DELETE,
-                    new AuditLog.LogEntity("USER", id),
-                    "Deleted user: " + user); //FIXME: The user is deleted, but how can I then understand who he was?
+                    new AuditLog.LogEntity("USER", deleteKeycloakId),
+                    "Admin " + currentKeycloakId + " deleted user: " + user.get());
         }
 
         return deleted;

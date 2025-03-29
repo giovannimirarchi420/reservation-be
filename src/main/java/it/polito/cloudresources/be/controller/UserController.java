@@ -53,6 +53,7 @@ public class UserController {
      * @return List of users based on access permissions
      */
     @GetMapping
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Get all users", description = "Retrieves all users with optional federation filtering")
     public ResponseEntity<List<UserDTO>> getAllUsers(
             @RequestParam(required = false) String federationId,
@@ -101,6 +102,7 @@ public class UserController {
      * @return The requested user or 404 if not found
      */
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Get user by ID", description = "Retrieves a specific user by their ID (Admin only)")
     public ResponseEntity<UserDTO> getUserById(@PathVariable String id) {
         return userService.getUserById(id)
@@ -130,6 +132,7 @@ public class UserController {
      * @return The created user or error response
      */
     @PostMapping
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Create user", description = "Creates a new user (Admin only)")
     public ResponseEntity<Object> createUser(@Valid @RequestBody CreateUserDTO createUserDTO) {
         try {
@@ -184,6 +187,7 @@ public class UserController {
      * @return The updated user or error response
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Update user", description = "Updates an existing user (Admin only)")
     public ResponseEntity<Object> updateUser(
             @PathVariable String id,
@@ -276,15 +280,18 @@ public class UserController {
      * @return Success response or error
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Delete user", description = "Deletes an existing user (Admin only)")
-    public ResponseEntity<Object> deleteUser(@PathVariable String id) {
+    public ResponseEntity<Object> deleteUser(@PathVariable String id, Authentication authentication) {
         try {
             Optional<UserDTO> userOpt = userService.getUserById(id);
             if (userOpt.isEmpty()) {
                 return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
             }
-
-            boolean deleted = userService.deleteUser(id);
+            
+            String currentKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+            boolean deleted = userService.deleteUser(id, currentKeycloakId);
+            
             if (!deleted) {
                 return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR,
                         "Failed to delete user");
@@ -304,6 +311,7 @@ public class UserController {
      * @return List of users with the specified role
      */
     @GetMapping("/by-role/{role}")
+    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Get users by role", description = "Retrieves users with a specific role (Admin only)")
     public ResponseEntity<List<UserDTO>> getUsersByRole(@PathVariable String role) {
         List<UserDTO> users = userService.getUsersByRole(role.toUpperCase());

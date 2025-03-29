@@ -31,7 +31,6 @@ import java.util.List;
 public class AuditLogController {
 
     private final AuditLogViewerService auditLogViewerService;
-    private final ControllerUtils controllerUtils;
 
     /**
      * Get audit logs with optional filtering and pagination
