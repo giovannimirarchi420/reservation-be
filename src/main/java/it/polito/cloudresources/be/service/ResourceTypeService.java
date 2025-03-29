@@ -129,7 +129,7 @@ public class ResourceTypeService {
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.DELETE,
                 new AuditLog.LogEntity("RESOURCE-TYPE", id.toString()),
-                "Admin " + userId + "deleted resource type: " +resourceType.get() );
+                "Admin " + userId + " deleted resource type: " +resourceType.get() );
         
         return true;
     }

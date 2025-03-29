@@ -3,6 +3,7 @@ package it.polito.cloudresources.be.service;
 import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.repository.AuditLogRepository;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -10,10 +11,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 
 /**
  * Enhanced service for audit logging of application events
@@ -54,7 +58,6 @@ public class AuditLogService {
 
         JwtAuthenticationToken jwtAuth = getJwtAuthenticationToken();
         ZonedDateTime timestamp = dateTimeService.getCurrentDateTime();
-        String userId;
 
         AuditLog.AuditLogBuilder builder = AuditLog.builder()
                 .timestamp(timestamp)
@@ -62,23 +65,11 @@ public class AuditLogService {
                 .entityType(entityType)
                 .action(action)
                 .details(details)
+                .userId(jwtAuth.getToken().getClaimAsString("sub"))
+                .username(jwtAuth.getToken().getClaimAsString("preferred_username"))
+                .federationName(jwtAuth.getToken().getClaimAsString("group"))
+                .entityId(entityId)
                 .severity(severity);
-
-        if (entityId != null) {
-            builder.entityId(entityId);
-        }
-
-        // Add user information from JWT token if available
-        if (jwtAuth != null) {
-            userId = jwtAuth.getToken().getClaimAsString("sub");
-            builder.userId(userId);
-            builder.username(jwtAuth.getToken().getClaimAsString("preferred_username"));
-        } else {
-            userId = "unknown";
-            builder.username(userId);
-        }
-
-        log.info("[{}] USER: {} ACTION: {}", timestamp, userId, action.toString());
 
         auditLogRepository.save(builder.build());
     }
@@ -88,6 +79,9 @@ public class AuditLogService {
      */
     private JwtAuthenticationToken getJwtAuthenticationToken() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return (JwtAuthenticationToken) auth;
+        if (auth instanceof JwtAuthenticationToken) {
+            return (JwtAuthenticationToken) auth;
+        }
+        return null;
     }
 }

@@ -35,10 +35,10 @@ public class SecurityEventLogger {
             String username = jwtAuth.getToken().getClaimAsString("preferred_username");
             String userId = jwtAuth.getToken().getSubject();
             
-            log.info("LOGIN SUCCESS: User '{}' (ID: {}) logged in successfully from IP {}", 
+            log.debug("LOGIN SUCCESS: User '{}' (ID: {}) logged in successfully from IP {}",
                     username, userId, ipAddress);
         } else {
-            log.info("LOGIN SUCCESS: User '{}' logged in successfully from IP {}", 
+            log.debug("LOGIN SUCCESS: User '{}' logged in successfully from IP {}",
                     auth.getName(), ipAddress);
         }
     }

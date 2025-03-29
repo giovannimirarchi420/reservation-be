@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.time.ZonedDateTime;
@@ -18,8 +17,7 @@ import java.time.ZonedDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EqualsAndHashCode(callSuper = true)
-public class AuditLog extends AuditableEntity {
+public class AuditLog {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -27,18 +25,13 @@ public class AuditLog extends AuditableEntity {
     @Column(name = "timestamp", nullable = false)
     private ZonedDateTime timestamp;
 
-    @Column(name = "user_id")
-    private String userId;
-
     @Column(name = "username")
     private String username;
-
-    @Column(name = "federation_id")
-    private String federationId;
 
     @Column(name = "federation_name")
     private String federationName;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "log_type", nullable = false, length = 50)
     private AuditLog.LogType logType;
 
@@ -48,14 +41,12 @@ public class AuditLog extends AuditableEntity {
     @Column(name = "entity_type", length = 50)
     private String entityType;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "action", nullable = false, length = 50)
     private AuditLog.LogAction action;
 
     @Column(name = "entity_id")
     private String entityId;
-
-    @Column(name = "ip_address", length = 50)
-    private String ipAddress;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "severity", nullable = false)

@@ -3,10 +3,8 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.AuditLogDTO;
 import it.polito.cloudresources.be.model.AuditLog;
-import it.polito.cloudresources.be.service.AuditLogService;
 import it.polito.cloudresources.be.service.AuditLogViewerService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import lombok.RequiredArgsConstructor;
@@ -64,21 +62,10 @@ public class AuditLogController {
     /**
      * Get logs by user ID
      */
-    @GetMapping("/user/{userId}")
+    @GetMapping("/user/{username}")
     @Operation(summary = "Get logs by user", description = "Retrieves audit logs for a specific user (Admin only)")
-    public ResponseEntity<List<AuditLogDTO>> getLogsByUserId(@PathVariable String userId) {
-        List<AuditLogDTO> logs = auditLogViewerService.getLogsByUserId(userId);
-
-        return ResponseEntity.ok(logs);
-    }
-
-    /**
-     * Get logs by federation ID
-     */
-    @GetMapping("/federation/{federationId}")
-    @Operation(summary = "Get logs by federation", description = "Retrieves audit logs for a specific federation (Admin only)")
-    public ResponseEntity<List<AuditLogDTO>> getLogsByFederationId(@PathVariable String federationId) {
-        List<AuditLogDTO> logs = auditLogViewerService.getLogsByFederationId(federationId);
+    public ResponseEntity<List<AuditLogDTO>> getLogsByUserId(@PathVariable String username) {
+        List<AuditLogDTO> logs = auditLogViewerService.getLogsByUsername(username);
 
         return ResponseEntity.ok(logs);
     }

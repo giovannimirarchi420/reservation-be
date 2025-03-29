@@ -48,18 +48,8 @@ public class AuditLogViewerService {
     /**
      * Get logs by user ID
      */
-    public List<AuditLogDTO> getLogsByUserId(String userId) {
-        return auditLogRepository.findByUserIdOrderByTimestampDesc(userId)
-                .stream()
-                .map(auditLogMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get logs by federation ID
-     */
-    public List<AuditLogDTO> getLogsByFederationId(String federationId) {
-        return auditLogRepository.findByFederationIdOrderByTimestampDesc(federationId)
+    public List<AuditLogDTO> getLogsByUsername(String userId) {
+        return auditLogRepository.findByUsernameOrderByTimestampDesc(userId)
                 .stream()
                 .map(auditLogMapper::toDto)
                 .collect(Collectors.toList());

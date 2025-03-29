@@ -18,12 +18,7 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     /**
      * Find logs by user ID
      */
-    List<AuditLog> findByUserIdOrderByTimestampDesc(String userId);
-
-    /**
-     * Find logs by federation ID
-     */
-    List<AuditLog> findByFederationIdOrderByTimestampDesc(String federationId);
+    List<AuditLog> findByUsernameOrderByTimestampDesc(String username);
 
     /**
      * Find logs by entity type and entity ID
