@@ -34,17 +34,104 @@ public class AuditLogController {
     private final ControllerUtils controllerUtils;
 
     /**
-     * Get all audit logs with pagination
+     * Get audit logs with optional filtering and pagination
      */
     @GetMapping
-    @Operation(summary = "Get all logs", description = "Retrieves all audit logs with pagination (Admin only)")
-    public ResponseEntity<ApiResponseDTO> getAllLogs(
+    @Operation(summary = "Get audit logs", description = "Retrieves audit logs with optional filtering and pagination (Admin only)")
+    public ResponseEntity<ApiResponseDTO> getAuditLogs(
+            @RequestParam(required = false) String entityType,
+            @RequestParam(required = false) String entityId,
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) String severity,
+            @RequestParam(required = false) String logType,
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime endDate,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        List<AuditLogDTO> logs = auditLogViewerService.getAllLogs(page, size);
+        try {
+            // Start with all logs, then apply filters progressively
+            List<AuditLogDTO> logs;
+            
+            // Apply pagination for initial fetch if no content search is needed
+            // Otherwise, we'll filter first and paginate the final results
+            if (query == null || query.trim().isEmpty()) {
+                logs = auditLogViewerService.getAllLogs(page, size);
+            } else {
+                // If we have a query parameter, search logs by content first
+                logs = auditLogViewerService.searchLogs(query, 0, Integer.MAX_VALUE);
+            }
+            
+            // Apply filters in sequence (AND logic)
+            if (entityType != null) {
+                logs = logs.stream()
+                    .filter(log -> entityType.equals(log.getEntityType()))
+                    .toList();
+                System.out.println(logs.toString());
+            }
+            
+            if (entityId != null) {
+                logs = logs.stream()
+                    .filter(log -> entityId.equals(log.getEntityId()))
+                    .toList();
+            }
+            
+            if (username != null) {
+                logs = logs.stream()
+                    .filter(log -> username.equals(log.getUsername()))
+                    .toList();
+            }
+            
+            if (action != null) {
+                AuditLog.LogAction logAction = parseLogAction(action);
+                logs = logs.stream()
+                    .filter(log -> logAction.equals(log.getAction()))
+                    .toList();
+            }
+            
+            if (severity != null) {
+                AuditLog.LogSeverity logSeverity = parseLogSeverity(severity);
+                logs = logs.stream()
+                    .filter(log -> logSeverity.equals(log.getSeverity()))
+                    .toList();
+            }
+            
+            if (logType != null) {
+                AuditLog.LogType logTypeEnum = parseLogType(logType);
+                logs = logs.stream()
+                    .filter(log -> logTypeEnum.equals(log.getLogType()))
+                    .toList();
+            }
+            
+            if (startDate != null && endDate != null) {
+                logs = logs.stream()
+                    .filter(log -> {
+                        ZonedDateTime logTime = log.getTimestamp();
+                        return (logTime.isEqual(startDate) || logTime.isAfter(startDate)) && 
+                               (logTime.isEqual(endDate) || logTime.isBefore(endDate));
+                    })
+                    .toList();
+            }
 
-        return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", new AuditLogResponseDTO(logs, logs.size())));
+            // Apply paging to the result if we did content search first
+            if (query != null && !query.trim().isEmpty() && logs.size() > size) {
+                int fromIndex = page * size;
+                int toIndex = Math.min(fromIndex + size, logs.size());
+                
+                if (fromIndex < logs.size()) {
+                    logs = logs.subList(fromIndex, toIndex);
+                } else {
+                    logs = List.of(); // Empty list if page is out of bounds
+                }
+            }
+            
+            return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", new AuditLogResponseDTO(logs, logs.size())));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiResponseDTO(false, e.getMessage()));
+        }
     }
 
     /**
@@ -54,114 +141,40 @@ public class AuditLogController {
     @Operation(summary = "Get log by ID", description = "Retrieves a specific audit log by its ID (Admin only)")
     public ResponseEntity<AuditLogDTO> getLogById(@PathVariable Long id) {
         return auditLogViewerService.getLogById(id)
-                .map(log -> {
-
-                    return ResponseEntity.ok(log);
-                })
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     /**
-     * Get logs by user ID
+     * Parse log action from string
      */
-    @GetMapping("/user/{username}")
-    @Operation(summary = "Get logs by user", description = "Retrieves audit logs for a specific user (Admin only)")
-    public ResponseEntity<List<AuditLogDTO>> getLogsByUserId(@PathVariable String username) {
-        List<AuditLogDTO> logs = auditLogViewerService.getLogsByUsername(username);
-
-        return ResponseEntity.ok(logs);
-    }
-
-    /**
-     * Get logs by entity type and ID
-     */
-    @GetMapping("/entity")
-    @Operation(summary = "Get logs by entity", description = "Retrieves audit logs for a specific entity (Admin only)")
-    public ResponseEntity<List<AuditLogDTO>> getLogsByEntity(
-            @RequestParam String entityType,
-            @RequestParam String entityId) {
-
-        List<AuditLogDTO> logs = auditLogViewerService.getLogsByEntity(entityType, entityId);
-
-        return ResponseEntity.ok(logs);
-    }
-
-    /**
-     * Get logs by type
-     */
-    @GetMapping("/type/{logType}")
-    @Operation(summary = "Get logs by type", description = "Retrieves audit logs of a specific type (Admin only)")
-    public ResponseEntity<Object> getLogsByType(@PathVariable String logType) {
-        List<AuditLogDTO> logs;
-        if("admin".equalsIgnoreCase(logType)){
-            logs = auditLogViewerService.getLogsByType(AuditLog.LogType.ADMIN);
-        } else if ("user".equalsIgnoreCase(logType)) {
-            logs = auditLogViewerService.getLogsByType(AuditLog.LogType.USER);
-        } else {
-            return controllerUtils.createErrorResponse(HttpStatus.BAD_REQUEST, "Expected log type to be 'admin' or 'user' ");
+    private AuditLog.LogAction parseLogAction(String action) {
+        try {
+            return AuditLog.LogAction.valueOf(action.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid action value. Expected one of: CREATE, UPDATE, DELETE");
         }
-
-
-        return ResponseEntity.status(HttpStatus.OK).body(logs);
     }
 
     /**
-     * Get logs by action
+     * Parse log severity from string
      */
-    @GetMapping("/action/{action}")
-    @Operation(summary = "Get logs by action", description = "Retrieves audit logs for a specific action (Admin only)")
-    public ResponseEntity<Object> getLogsByAction(@PathVariable String action) {
-        List<AuditLogDTO> logs;
-        if("create".equalsIgnoreCase(action)){
-            logs = auditLogViewerService.getLogsByAction(AuditLog.LogAction.CREATE);
-        } else if ("update".equalsIgnoreCase(action)) {
-            logs = auditLogViewerService.getLogsByAction(AuditLog.LogAction.DELETE);
-        } else if ("delete".equalsIgnoreCase(action)){
-            logs = auditLogViewerService.getLogsByAction(AuditLog.LogAction.UPDATE);
-        } else {
-            return controllerUtils.createErrorResponse(HttpStatus.BAD_REQUEST, "Expected log action to be 'create' or 'update' or 'delete' ");
+    private AuditLog.LogSeverity parseLogSeverity(String severity) {
+        try {
+            return AuditLog.LogSeverity.valueOf(severity.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid severity value. Expected one of: INFO, WARNING, ERROR");
         }
-
-        return ResponseEntity.status(HttpStatus.OK).body(logs);
     }
 
     /**
-     * Get logs by severity
+     * Parse log type from string
      */
-    @GetMapping("/severity/{severity}")
-    @Operation(summary = "Get logs by severity", description = "Retrieves audit logs with a specific severity (Admin only)")
-    public ResponseEntity<List<AuditLogDTO>> getLogsBySeverity(@PathVariable AuditLog.LogSeverity severity) {
-        List<AuditLogDTO> logs = auditLogViewerService.getLogsBySeverity(severity);
-
-        return ResponseEntity.ok(logs);
-    }
-
-    /**
-     * Get logs by date range
-     */
-    @GetMapping("/date-range")
-    @Operation(summary = "Get logs by date range", description = "Retrieves audit logs within a specific date range (Admin only)")
-    public ResponseEntity<List<AuditLogDTO>> getLogsByDateRange(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime endDate) {
-
-        List<AuditLogDTO> logs = auditLogViewerService.getLogsByDateRange(startDate, endDate);
-
-        return ResponseEntity.ok(logs);
-    }
-
-    /**
-     * Search logs by text
-     */
-    @GetMapping("/search")
-    @Operation(summary = "Search logs", description = "Searches audit logs containing specific text in details (Admin only)")
-    public ResponseEntity<ApiResponseDTO> searchLogs(
-            @RequestParam String query,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        
-        List<AuditLogDTO> logs = auditLogViewerService.searchLogs(query, page, size);
-
-        return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", new AuditLogResponseDTO(logs, logs.size())));
+    private AuditLog.LogType parseLogType(String logType) {
+        try {
+            return AuditLog.LogType.valueOf(logType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid log type value. Expected one of: USER, ADMIN");
+        }
     }
 }
