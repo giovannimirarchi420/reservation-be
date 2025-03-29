@@ -2,6 +2,7 @@ package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.mapper.UserMapper;
+import it.polito.cloudresources.be.model.AuditLog;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -73,9 +74,10 @@ public class UserService {
             throw new RuntimeException("Failed to create user in Keycloak");
         }
 
-        // Log the action
-        auditLogService.logAdminAction("User", "create",
-                "Created user: " + userDTO.getUsername());
+        auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                AuditLog.LogAction.CREATE,
+                new AuditLog.LogEntity("USER", userId),
+                ""); //FIXME: Log Admin user
 
         // Retrieve and return the newly created user
         return keycloakService.getUserById(userId)
@@ -132,9 +134,10 @@ public class UserService {
             throw new RuntimeException("Failed to update user in Keycloak");
         }
 
-        // Log the action
-        auditLogService.logAdminAction("User", "update",
-                "Updated user with ID: " + id);
+        auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                AuditLog.LogAction.UPDATE,
+                new AuditLog.LogEntity("USER", id),
+                ""); //FIXME: Log Admin user
 
         // Retrieve and return the updated user
         return keycloakService.getUserById(id)
@@ -149,16 +152,16 @@ public class UserService {
      */
     public boolean deleteUser(String id) {
         // Get username for logging before deletion
-        String username = keycloakService.getUserById(id)
-                .map(UserRepresentation::getUsername)
-                .orElse("Unknown");
+        Optional<UserRepresentation> user = keycloakService.getUserById(id);
 
         boolean deleted = keycloakService.deleteUser(id);
 
         if (deleted) {
             // Log the action
-            auditLogService.logAdminAction("User", "delete",
-                    "Deleted user: " + username);
+            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                    AuditLog.LogAction.DELETE,
+                    new AuditLog.LogEntity("USER", id),
+                    "Deleted user: " + user); //FIXME: The user is deleted, but how can I then understand who he was?
         }
 
         return deleted;

@@ -2,6 +2,7 @@ package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.mapper.EventMapper;
+import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
@@ -36,6 +37,7 @@ public class EventService {
     private final NotificationService notificationService;
     private final ResourceService resourceService;
     private final KeycloakService keycloakService;
+    private final AuditLogService auditLogService;
     private final EventMapper eventMapper;
     private final DateTimeUtils dateTimeUtils;
 
@@ -295,6 +297,11 @@ public class EventService {
                 "New booking from " + dateTimeUtils.formatDateTime(eventDTO.getStart()) + 
                 " to " + dateTimeUtils.formatDateTime(eventDTO.getEnd())
         );
+
+        auditLogService.logCrudAction(AuditLog.LogType.USER,
+                AuditLog.LogAction.UPDATE,
+                new AuditLog.LogEntity("EVENT", savedEvent.getId().toString()),
+                "User: " + userId + " created event");
         
         return eventMapper.toDto(savedEvent);
     }
@@ -404,6 +411,12 @@ public class EventService {
                     }
                     
                     Event updatedEvent = eventRepository.save(existingEvent);
+
+                    auditLogService.logCrudAction(AuditLog.LogType.USER,
+                            AuditLog.LogAction.UPDATE,
+                            new AuditLog.LogEntity("EVENT", updatedEvent.getId().toString()),
+                            "User: " + userId + " updated event to: " + updatedEvent);
+
                     log.debug("Updated event: {}", updatedEvent);
                     return eventMapper.toDto(updatedEvent);
                 });
@@ -428,6 +441,12 @@ public class EventService {
         }
         
         eventRepository.deleteById(id);
+
+        auditLogService.logCrudAction(AuditLog.LogType.USER,
+                AuditLog.LogAction.DELETE,
+                new AuditLog.LogEntity("EVENT", event.getId().toString()),
+                "User: " + userId + " deleted event: " + event);
+
         return true;
     }
 

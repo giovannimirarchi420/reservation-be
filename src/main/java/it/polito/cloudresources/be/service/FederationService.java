@@ -4,6 +4,7 @@ import it.polito.cloudresources.be.dto.FederationDTO;
 import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.mapper.FederationMapper;
 import it.polito.cloudresources.be.mapper.UserMapper;
+import it.polito.cloudresources.be.model.AuditLog;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.representations.idm.GroupRepresentation;
@@ -48,7 +49,9 @@ public class FederationService {
         
         if (federationId != null) {
             // Log the action
-            auditLogService.logAdminAction("Federation", "create", 
+            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                    AuditLog.LogAction.CREATE,
+                    new AuditLog.LogEntity("FEDERATION", federationId),
                     "Created federation: " + federationDTO.getName());
             
             // Get created federation to return full details
@@ -71,8 +74,10 @@ public class FederationService {
         
         if (updated) {
             // Log the action
-            auditLogService.logAdminAction("Federation", "update", 
-                    "Updated federation: " + federationDTO.getName());
+            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                    AuditLog.LogAction.UPDATE,
+                    new AuditLog.LogEntity("FEDERATION", id),
+                    "Updated federation: " + group.getName());
             
             // Get updated federation to return
             return keycloakService.getFederationById(id)
@@ -94,8 +99,9 @@ public class FederationService {
         boolean deleted = keycloakService.deleteFederation(id);
         
         if (deleted) {
-            // Log the action
-            auditLogService.logAdminAction("Federation", "delete", 
+            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                    AuditLog.LogAction.DELETE,
+                    new AuditLog.LogEntity("FEDERATION", id),
                     "Deleted federation: " + federationName);
         }
         
@@ -117,8 +123,10 @@ public class FederationService {
         
         if (added) {
             // Log the action
-            auditLogService.logAdminAction("Federation", "addUser", 
-                    "Added user ID: " + userId + " to federation ID: " + federationId);
+            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                    AuditLog.LogAction.UPDATE,
+                    new AuditLog.LogEntity("FEDERATION-USER", federationId),
+                    "Added user " + userId + " to federation " + federationId);
         }
         
         return added;
@@ -131,9 +139,10 @@ public class FederationService {
         boolean removed = keycloakService.removeUserFromFederation(userId, federationId);
         
         if (removed) {
-            // Log the action
-            auditLogService.logAdminAction("Federation", "removeUser", 
-                    "Removed user ID: " + userId + " from federation ID: " + federationId);
+            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                    AuditLog.LogAction.DELETE,
+                    new AuditLog.LogEntity("FEDERATION-USER", federationId),
+                    "Deleted user " + userId + " from federation " + federationId);
         }
         
         return removed;

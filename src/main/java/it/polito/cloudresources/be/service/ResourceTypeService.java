@@ -2,6 +2,7 @@ package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.ResourceTypeDTO;
 import it.polito.cloudresources.be.mapper.ResourceTypeMapper;
+import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
@@ -60,11 +61,12 @@ public class ResourceTypeService {
 
         ResourceType resourceType = resourceTypeMapper.toEntity(resourceTypeDTO);
         ResourceType savedType = resourceTypeRepository.save(resourceType);
-        
-        // Log the action
-        auditLogService.logAdminAction("ResourceType", "create", 
-                "Created resource type: " + savedType.getName());
-                
+
+        auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                AuditLog.LogAction.CREATE,
+                new AuditLog.LogEntity("RESOURCE-TYPE", savedType.getId().toString()),
+                "Admin " + userId + " created resource type: "+ savedType);
+
         return resourceTypeMapper.toDto(savedType);
     }
 
@@ -85,10 +87,11 @@ public class ResourceTypeService {
                     
                     // Save updated entity
                     ResourceType updatedType = resourceTypeRepository.save(existingType);
-                    
-                    // Log the action
-                    auditLogService.logAdminAction("ResourceType", "update", 
-                            "Updated resource type: " + updatedType.getName());
+
+                    auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                            AuditLog.LogAction.UPDATE,
+                            new AuditLog.LogEntity("RESOURCE-TYPE", updatedType.getId().toString()),
+                            "Admin " + userId + " updated resource type to: " + updatedType);
                     
                     return resourceTypeMapper.toDto(updatedType);
                 });
@@ -122,10 +125,11 @@ public class ResourceTypeService {
         
         // Delete the resource type
         resourceTypeRepository.deleteById(id);
-        
-        // Log the action
-        auditLogService.logAdminAction("ResourceType", "delete", 
-                "Deleted resource type: " + typeName);
+
+        auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                AuditLog.LogAction.DELETE,
+                new AuditLog.LogEntity("RESOURCE-TYPE", id.toString()),
+                "Admin " + userId + "deleted resource type: " +resourceType.get() );
         
         return true;
     }

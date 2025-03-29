@@ -2,6 +2,7 @@ package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.NotificationDTO;
 import it.polito.cloudresources.be.mapper.NotificationMapper;
+import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Notification;
 import it.polito.cloudresources.be.model.NotificationType;
 import it.polito.cloudresources.be.repository.NotificationRepository;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -64,6 +66,10 @@ public class NotificationService {
                 .filter(notification -> notification.getKeycloakId().equals(keycloakId))
                 .map(notification -> {
                     notification.setRead(true);
+                    auditLogService.logCrudAction(AuditLog.LogType.USER,
+                            AuditLog.LogAction.UPDATE,
+                            new AuditLog.LogEntity("NOTIFICATION", notificationId.toString()),
+                            "User: " + keycloakId + " marked notification as read");
                     return notificationMapper.toDto(notificationRepository.save(notification));
                 });
     }
@@ -74,13 +80,17 @@ public class NotificationService {
     @Transactional
     public void markAllAsRead(String keycloakId) {
         List<Notification> notifications = notificationRepository.findByKeycloakIdAndReadOrderByCreatedAtDesc(keycloakId, false);
+        LinkedList<String> ids = new LinkedList<>();
         for (Notification notification : notifications) {
             notification.setRead(true);
             notificationRepository.save(notification);
+            ids.add(notification.getId().toString());
         }
-        
-        // Log the action
-        auditLogService.logUserAction("notification", "Mark all as read for user ID: " + keycloakId);
+        auditLogService.logCrudAction(AuditLog.LogType.USER,
+                AuditLog.LogAction.UPDATE,
+                new AuditLog.LogEntity("NOTIFICATION", null),
+                "User: " + keycloakId + " marked all notification as read (notification ids: " + ids + ")");
+
     }
 
     /**
@@ -91,9 +101,11 @@ public class NotificationService {
         Optional<Notification> notification = notificationRepository.findById(notificationId);
         if (notification.isPresent() && notification.get().getKeycloakId().equals(keycloakId)) {
             notificationRepository.delete(notification.get());
-            
-            // Log the action
-            auditLogService.logUserAction("notification", "Delete notification ID: " + notificationId);
+
+            auditLogService.logCrudAction(AuditLog.LogType.USER,
+                    AuditLog.LogAction.DELETE,
+                    new AuditLog.LogEntity("NOTIFICATION", notificationId.toString()),
+                    "User: " + keycloakId + " deleted notification " + notificationId);
             
             return true;
         }
@@ -149,10 +161,7 @@ public class NotificationService {
             
             notificationRepository.save(notification);
         }
-        
-        // Log the action
-        auditLogService.logSystemEvent("Create role notification", 
-                "Created notifications for role: " + role + " with message: " + message);
+
     }
 
     /**
@@ -186,8 +195,6 @@ public class NotificationService {
             
             notificationRepository.save(notification);
         }
-        
-        // Log the action
-        auditLogService.logSystemEvent("Global notification", "Created global notification: " + message);
+
     }
 }

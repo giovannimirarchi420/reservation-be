@@ -2,6 +2,7 @@ package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.ResourceDTO;
 import it.polito.cloudresources.be.mapper.ResourceMapper;
+import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
@@ -64,11 +65,12 @@ public class ResourceService {
         // Create resource
         Resource resource = resourceMapper.toEntity(resourceDTO);
         Resource savedResource = resourceRepository.save(resource);
-        
-        // Log the action
-        auditLogService.logAdminAction("Resource", "create", 
-                "Created resource: " + savedResource.getName() + " in federation: " + resourceDTO.getFederationName());
-        
+
+        auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                AuditLog.LogAction.CREATE,
+                new AuditLog.LogEntity("RESOURCE", savedResource.getId().toString()),
+                "Admin " + userId + "created resource " + savedResource.getName() + " in federation " + savedResource.getFederationId() + "(id: " + savedResource.getId());
+
         return resourceMapper.toDto(savedResource);
     }
     
@@ -117,10 +119,11 @@ public class ResourceService {
                     
                     // Save the updated resource
                     Resource savedResource = resourceRepository.save(updatedResource);
-                    
-                    // Log the action
-                    auditLogService.logAdminAction("Resource", "update", 
-                            "Updated resource: " + savedResource.getName());
+
+                    auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                            AuditLog.LogAction.UPDATE,
+                            new AuditLog.LogEntity("RESOURCE", savedResource.getId().toString()),
+                            "Admin "+ userId + " updated resource to: " + updatedResource);
                     
                     // Check if status has changed
                     if (oldStatus != savedResource.getStatus()) {
@@ -148,11 +151,11 @@ public class ResourceService {
                     ResourceStatus oldStatus = existingResource.getStatus();
                     existingResource.setStatus(status);
                     Resource updatedResource = resourceRepository.save(existingResource);
-                    
-                    // Log the action
-                    auditLogService.logAdminAction("Resource", "updateStatus", 
-                            "Updated resource status: " + updatedResource.getName() + 
-                            " from " + oldStatus + " to " + status);
+
+                    auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                            AuditLog.LogAction.UPDATE,
+                            new AuditLog.LogEntity("RESOURCE", updatedResource.getId().toString()),
+                            "Admin "+ userId + "updated resource status to: "+ status.toString());
                     
                     // Handle status change notifications
                     handleResourceStatusChange(updatedResource, oldStatus);
@@ -199,9 +202,11 @@ public class ResourceService {
                     );
                 }
             }
-            
-            // Log the action
-            auditLogService.logAdminAction("Resource", "delete", "Deleted resource: " + resource.getName());
+
+            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                    AuditLog.LogAction.DELETE,
+                    new AuditLog.LogEntity("RESOURCE", id.toString()),
+                    "Admin " + userId + " deleted resource: " + resource);
             
             // Delete the resource
             resourceRepository.deleteById(id);
