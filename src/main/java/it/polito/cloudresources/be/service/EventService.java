@@ -301,7 +301,7 @@ public class EventService {
         );
 
         auditLogService.logCrudAction(AuditLog.LogType.USER,
-                AuditLog.LogAction.UPDATE,
+                AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("EVENT", savedEvent.getId().toString()),
                 "User: " + userId + " created event");
         

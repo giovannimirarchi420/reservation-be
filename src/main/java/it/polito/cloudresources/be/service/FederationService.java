@@ -5,6 +5,7 @@ import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.mapper.FederationMapper;
 import it.polito.cloudresources.be.mapper.UserMapper;
 import it.polito.cloudresources.be.model.AuditLog;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.representations.idm.GroupRepresentation;
@@ -30,15 +31,28 @@ public class FederationService {
      * Get all federations
      */
     public List<FederationDTO> getAllFederations() {
-        return federationMapper.toDto(keycloakService.getAllFederations());
+        List<FederationDTO> federations = federationMapper.toDto(keycloakService.getAllFederations());
+        
+        for (FederationDTO federation : federations) {
+            int memberCount = keycloakService.getUsersInFederation(federation.getId()).size();
+            federation.setMemberCount(memberCount);
+        }
+
+        return federations;
     }
     
     /**
      * Get federation by ID
      */
-    public Optional<FederationDTO> getFederationById(String id) {
-        return keycloakService.getFederationById(id)
-                .map(federationMapper::toDto);
+    public FederationDTO getFederationById(String id) throws EntityNotFoundException {
+        Optional<GroupRepresentation> keycloakGroup = keycloakService.getFederationById(id);
+        FederationDTO federationDTO;
+        if (keycloakGroup.isPresent()) {
+            federationDTO = federationMapper.toDto(keycloakService.getFederationById(id).get());
+        } else {
+            throw new EntityNotFoundException("Federation not found"); 
+        }
+        return federationDTO;
     }
     
     /**

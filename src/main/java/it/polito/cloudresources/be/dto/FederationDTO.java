@@ -23,4 +23,5 @@ public class FederationDTO {
     
     private List<String> adminIds;
     private List<String> adminNames;
+    private int memberCount;
 }

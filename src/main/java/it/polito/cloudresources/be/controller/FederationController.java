@@ -25,6 +25,7 @@ import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.service.FederationService;
 import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.util.ControllerUtils;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -51,7 +52,7 @@ public class FederationController {
         if (!keycloakService.hasGlobalAdminRole(userId)) {
             List<String> userFederations = keycloakService.getUserFederations(userId);
             List<FederationDTO> federations = userFederations.stream()
-                    .map(id -> federationService.getFederationById(id).orElse(null))
+                    .map(id -> federationService.getFederationById(id))
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
             return ResponseEntity.ok(federations);
@@ -73,10 +74,12 @@ public class FederationController {
             !keycloakService.isUserInFederation(userId, id)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        
-        return federationService.getFederationById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        try {
+            return ResponseEntity.ok().body(federationService.getFederationById(id));
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+
     }
     
     /**
