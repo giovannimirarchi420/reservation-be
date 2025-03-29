@@ -209,7 +209,9 @@ public class EventService {
     @Transactional
     public EventDTO createEvent(EventDTO eventDTO, String userId) {
         log.debug("Creating event with DTO: {}", eventDTO);
-        
+
+        eventDTO.setStart(dateTimeUtils.ensureTimeZone(eventDTO.getStart()));
+        eventDTO.setEnd(dateTimeUtils.ensureTimeZone(eventDTO.getEnd()));
         // Set current time if not provided by frontend
         if (eventDTO.getStart() == null) {
             eventDTO.setStart(dateTimeUtils.getCurrentDateTime());

@@ -113,12 +113,7 @@ public class EventController {
             Authentication authentication) {
         
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-        
-        // If no user ID is provided, set it to the current user
-        if (eventDTO.getUserId() == null) {
-            eventDTO.setUserId(keycloakId);
-        }
-        
+
         try {
             EventDTO createdEvent = eventService.createEvent(eventDTO, keycloakId);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdEvent);
@@ -193,19 +188,13 @@ public class EventController {
     @Operation(summary = "Check for conflicts", description = "Checks if an event conflicts with existing bookings")
     public ResponseEntity<ApiResponseDTO> checkConflicts(
             @RequestParam Long resourceId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime start,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime end,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime start,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime end,
             @RequestParam(required = false) Long eventId,
             Authentication authentication) {
-        
-        String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
-        
-        // If start or end time is not provided, use the current time and an hour later
-        ZonedDateTime effectiveStart = start != null ? start : ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
-        ZonedDateTime effectiveEnd = end != null ? end : ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID).plusHours(1);
-        
+
         try {
-            boolean hasConflicts = eventService.hasTimeConflict(resourceId, effectiveStart, effectiveEnd, eventId);
+            boolean hasConflicts = eventService.hasTimeConflict(resourceId, start, end, eventId);
             
             return utils.createSuccessResponse(
                     hasConflicts ? "The selected time period conflicts with existing bookings" : "No conflicts found",

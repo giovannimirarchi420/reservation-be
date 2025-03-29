@@ -5,7 +5,6 @@ import it.polito.cloudresources.be.mapper.AuditLogMapper;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
