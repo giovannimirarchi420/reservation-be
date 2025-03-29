@@ -107,8 +107,10 @@ public class AuditLogViewerService {
     /**
      * Search logs by details text
      */
-    public List<AuditLogDTO> searchLogs(String searchText) {
-        return auditLogRepository.findByDetailsContainingIgnoreCaseOrderByTimestampDesc(searchText)
+    public List<AuditLogDTO> searchLogs(String searchText, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("timestamp").descending());
+
+        return auditLogRepository.findByDetailsContainingIgnoreCase(searchText, pageable)
                 .stream()
                 .map(auditLogMapper::toDto)
                 .collect(Collectors.toList());

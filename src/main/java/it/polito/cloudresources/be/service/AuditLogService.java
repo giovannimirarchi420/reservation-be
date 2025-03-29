@@ -65,7 +65,6 @@ public class AuditLogService {
                 .entityType(entityType)
                 .action(action)
                 .details(details)
-                .userId(jwtAuth.getToken().getClaimAsString("sub"))
                 .username(jwtAuth.getToken().getClaimAsString("preferred_username"))
                 .federationName(jwtAuth.getToken().getClaimAsString("group"))
                 .entityId(entityId)

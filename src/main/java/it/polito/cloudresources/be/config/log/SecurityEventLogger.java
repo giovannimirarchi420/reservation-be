@@ -51,7 +51,7 @@ public class SecurityEventLogger {
         String ipAddress = getClientIP();
         String principal = event.getAuthentication().getName();
         
-        log.warn("LOGIN FAILED: Failed login attempt for '{}' from IP {} - Reason: {}", 
+        log.debug("LOGIN FAILED: Failed login attempt for '{}' from IP {} - Reason: {}", 
                 principal, ipAddress, event.getException().getMessage());
     }
 

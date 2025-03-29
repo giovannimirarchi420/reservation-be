@@ -3,7 +3,9 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.AuditLogDTO;
+import it.polito.cloudresources.be.dto.logs.AuditLogResponseDTO;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.service.AuditLogViewerService;
 import it.polito.cloudresources.be.util.ControllerUtils;
@@ -36,13 +38,13 @@ public class AuditLogController {
      */
     @GetMapping
     @Operation(summary = "Get all logs", description = "Retrieves all audit logs with pagination (Admin only)")
-    public ResponseEntity<List<AuditLogDTO>> getAllLogs(
+    public ResponseEntity<ApiResponseDTO> getAllLogs(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         List<AuditLogDTO> logs = auditLogViewerService.getAllLogs(page, size);
 
-        return ResponseEntity.ok(logs);
+        return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", new AuditLogResponseDTO(logs, logs.size())));
     }
 
     /**
@@ -153,9 +155,13 @@ public class AuditLogController {
      */
     @GetMapping("/search")
     @Operation(summary = "Search logs", description = "Searches audit logs containing specific text in details (Admin only)")
-    public ResponseEntity<List<AuditLogDTO>> searchLogs(@RequestParam String query) {
-        List<AuditLogDTO> logs = auditLogViewerService.searchLogs(query);
+    public ResponseEntity<ApiResponseDTO> searchLogs(
+            @RequestParam String query,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        
+        List<AuditLogDTO> logs = auditLogViewerService.searchLogs(query, page, size);
 
-        return ResponseEntity.ok(logs);
+        return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", new AuditLogResponseDTO(logs, logs.size())));
     }
 }

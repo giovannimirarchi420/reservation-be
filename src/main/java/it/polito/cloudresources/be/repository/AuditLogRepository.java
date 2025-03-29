@@ -1,6 +1,9 @@
 package it.polito.cloudresources.be.repository;
 
 import it.polito.cloudresources.be.model.AuditLog;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -51,5 +54,4 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     /**
      * Search logs by details containing a text
      */
-    List<AuditLog> findByDetailsContainingIgnoreCaseOrderByTimestampDesc(String searchText);
-}
+    Page<AuditLog> findByDetailsContainingIgnoreCase(String searchText, Pageable pageable);}
