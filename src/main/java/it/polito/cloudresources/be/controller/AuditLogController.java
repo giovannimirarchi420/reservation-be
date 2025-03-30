@@ -8,7 +8,6 @@ import it.polito.cloudresources.be.dto.AuditLogDTO;
 import it.polito.cloudresources.be.dto.logs.AuditLogResponseDTO;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.service.AuditLogViewerService;
-import it.polito.cloudresources.be.util.ControllerUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -34,6 +33,7 @@ public class AuditLogController {
 
     /**
      * Get audit logs with optional filtering and pagination
+     * TODO: Implements the log retrivial with JPA Criteria Query leveraging on DB for data filtering.
      */
     @GetMapping
     @Operation(summary = "Get audit logs", description = "Retrieves audit logs with optional filtering and pagination (Admin only)")

@@ -45,66 +45,6 @@ public class AuditLogViewerService {
     }
 
     /**
-     * Get logs by user ID
-     */
-    public List<AuditLogDTO> getLogsByUsername(String userId) {
-        return auditLogRepository.findByUsernameOrderByTimestampDesc(userId)
-                .stream()
-                .map(auditLogMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get logs by entity type and ID
-     */
-    public List<AuditLogDTO> getLogsByEntity(String entityType, String entityId) {
-        return auditLogRepository.findByEntityTypeAndEntityIdOrderByTimestampDesc(entityType, entityId)
-                .stream()
-                .map(auditLogMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get logs by log type
-     */
-    public List<AuditLogDTO> getLogsByType(AuditLog.LogType logType) {
-        return auditLogRepository.findByLogTypeOrderByTimestampDesc(logType)
-                .stream()
-                .map(auditLogMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get logs by action
-     */
-    public List<AuditLogDTO> getLogsByAction(AuditLog.LogAction action) {
-        return auditLogRepository.findByActionOrderByTimestampDesc(action)
-                .stream()
-                .map(auditLogMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get logs by severity
-     */
-    public List<AuditLogDTO> getLogsBySeverity(AuditLog.LogSeverity severity) {
-        return auditLogRepository.findBySeverityOrderByTimestampDesc(severity)
-                .stream()
-                .map(auditLogMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get logs by date range
-     */
-    public List<AuditLogDTO> getLogsByDateRange(ZonedDateTime startDate, ZonedDateTime endDate) {
-        return auditLogRepository.findByDateRange(startDate, endDate)
-                .stream()
-                .map(auditLogMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    /**
      * Search logs by details text
      */
     public List<AuditLogDTO> searchLogs(String searchText, int page, int size) {
