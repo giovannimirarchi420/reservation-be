@@ -58,4 +58,43 @@ public interface WebhookLogRepository extends JpaRepository<WebhookLog, Long> {
      * Find logs for a specific resource
      */
     List<WebhookLog> findByResourceId(Long resourceId);
+
+    /**
+     * Find logs by success status with pagination
+     */
+    Page<WebhookLog> findBySuccess(boolean success, Pageable pageable);
+
+    /**
+     * Find logs with payload containing text (case-insensitive)
+     */
+    Page<WebhookLog> findByPayloadContainingIgnoreCase(String query, Pageable pageable);
+
+    /**
+     * Find logs by success status and payload containing text
+     */
+    Page<WebhookLog> findBySuccessAndResponseContainingIgnoreCase(
+            boolean success, String query, Pageable pageable);
+
+    /**
+     * Find logs by webhook IDs with pagination
+     */
+    Page<WebhookLog> findByWebhookIdIn(List<Long> webhookIds, Pageable pageable);
+
+    /**
+     * Find logs by webhook IDs and success status with pagination
+     */
+    Page<WebhookLog> findByWebhookIdInAndSuccess(
+            List<Long> webhookIds, boolean success, Pageable pageable);
+
+    /**
+     * Find logs by webhook IDs and payload containing text
+     */
+    Page<WebhookLog> findByWebhookIdInAndPayloadContainingIgnoreCase(
+            List<Long> webhookIds, String query, Pageable pageable);
+
+    /**
+     * Find logs by webhook IDs, success status, and payload containing text
+     */
+    Page<WebhookLog> findByWebhookIdInAndSuccessAndPayloadContainingIgnoreCase(
+            List<Long> webhookIds, boolean success, String query, Pageable pageable);
 }

@@ -14,6 +14,10 @@ import it.polito.cloudresources.be.repository.WebhookLogRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -26,6 +30,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.SecureRandom;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
@@ -211,6 +216,89 @@ public class WebhookService {
         return webhookConfigRepository.findById(id)
                 .filter(webhook -> canManageWebhook(userId, webhook))
                 .map(webhookMapper::toDto);
+    }
+
+    /**
+     * Get all webhook logs accessible to the current user
+     * 
+     * @param userId The current user's ID
+     * @param success Optional filter for success status
+     * @param query Optional text search query
+     * @param page Page number
+     * @param size Page size
+     * @return Page of accessible webhook logs
+     */
+    public Page<WebhookLog> getAllAccessibleWebhookLogs(
+            String userId, Boolean success, String query, int page, int size) {
+        
+        PageRequest pageRequest = PageRequest.of(
+                page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        
+        // Global admins can see all logs
+        if (keycloakService.hasGlobalAdminRole(userId)) {
+            if (success != null && query != null && !query.isEmpty()) {
+                // Filter by both success and query
+                return webhookLogRepository.findBySuccessAndResponseContainingIgnoreCase(
+                        success, query, pageRequest);
+            } else if (success != null) {
+                // Filter by success only
+                return webhookLogRepository.findBySuccess(success, pageRequest);
+            } else if (query != null && !query.isEmpty()) {
+                // Filter by query only
+                return webhookLogRepository.findByPayloadContainingIgnoreCase(query, pageRequest);
+            } else {
+                // No filters
+                return webhookLogRepository.findAll(pageRequest);
+            }
+        }
+        
+        // Federation admins can only see logs for webhooks in their federations
+        List<String> adminFederations = keycloakService.getUserAdminFederations(userId);
+        
+        if (adminFederations.isEmpty()) {
+            // User is not admin of any federation, return empty page
+            return Page.empty(pageRequest);
+        }
+        
+        // Get all webhooks in the federations where the user is an admin
+        List<WebhookConfig> accessibleWebhooks = new ArrayList<>();
+        
+        for (String federationId : adminFederations) {
+            // Get webhooks for resources in this federation
+            accessibleWebhooks.addAll(
+                    webhookConfigRepository.findByResourceFederationIdAndEnabled(federationId, true));
+            
+            // Get webhooks for resource types in this federation
+            accessibleWebhooks.addAll(
+                    webhookConfigRepository.findByResourceTypeFederationIdAndEnabled(federationId, true));
+        }
+        
+        // If no accessible webhooks, return empty page
+        if (accessibleWebhooks.isEmpty()) {
+            return Page.empty(pageRequest);
+        }
+        
+        // Extract webhook IDs
+        List<Long> webhookIds = accessibleWebhooks.stream()
+                .map(WebhookConfig::getId)
+                .toList();
+        
+        // Get logs for these webhooks with the specified filters
+        if (success != null && query != null && !query.isEmpty()) {
+            // Filter by both success and query
+            return webhookLogRepository.findByWebhookIdInAndSuccessAndPayloadContainingIgnoreCase(
+                    webhookIds, success, query, pageRequest);
+        } else if (success != null) {
+            // Filter by success only
+            return webhookLogRepository.findByWebhookIdInAndSuccess(webhookIds, success, pageRequest);
+        } else if (query != null && !query.isEmpty()) {
+            // Filter by query only
+            return webhookLogRepository.findByWebhookIdInAndPayloadContainingIgnoreCase(
+                    webhookIds, query, pageRequest);
+        } else {
+            // No filters, just filter by webhook IDs
+            return webhookLogRepository.findByWebhookIdIn(webhookIds, pageRequest);
+        }
     }
     
     /**

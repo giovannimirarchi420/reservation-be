@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.webhooks.WebhookConfigDTO;
 import it.polito.cloudresources.be.dto.webhooks.WebhookConfigResponseDTO;
+import it.polito.cloudresources.be.dto.webhooks.WebhookLogsResponseDTO;
 import it.polito.cloudresources.be.model.WebhookLog;
 import it.polito.cloudresources.be.repository.WebhookLogRepository;
 import it.polito.cloudresources.be.service.WebhookService;
@@ -210,4 +211,36 @@ public class WebhookController {
                     "An error occurred while retrieving webhook logs: " + e.getMessage());
         }
     }
+
+    /**
+ * Get all webhook logs accessible to the current user
+ */
+@GetMapping("/logs")
+@Operation(summary = "Get all webhook logs", description = "Retrieves all webhook logs the user has access to")
+public ResponseEntity<Object> getAllWebhookLogs(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size,
+        @RequestParam(required = false) Boolean success,
+        @RequestParam(required = false) String query,
+        Authentication authentication) {
+    try {
+        String currentUserId = utils.getCurrentUserKeycloakId(authentication);
+        
+        // Get all accessible webhook logs
+        Page<WebhookLog> logs = webhookService.getAllAccessibleWebhookLogs(
+                currentUserId, success, query, page, size);
+        
+        // Create response DTO with pagination metadata
+        WebhookLogsResponseDTO responseDTO = new WebhookLogsResponseDTO(logs);
+        
+        return ResponseEntity.ok(
+                new ApiResponseDTO(true, "Webhook logs retrieved", responseDTO));
+        
+    } catch (AccessDeniedException e) {
+        return utils.createErrorResponse(HttpStatus.FORBIDDEN, e.getMessage());
+    } catch (Exception e) {
+        return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, 
+                "An error occurred while retrieving webhook logs: " + e.getMessage());
+    }
+}
 }
