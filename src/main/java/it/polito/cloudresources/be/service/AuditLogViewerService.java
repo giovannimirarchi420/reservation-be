@@ -2,7 +2,6 @@ package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.AuditLogDTO;
 import it.polito.cloudresources.be.mapper.AuditLogMapper;
-import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -10,7 +9,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
-import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;

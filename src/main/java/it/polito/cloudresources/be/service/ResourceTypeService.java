@@ -120,9 +120,6 @@ public class ResourceTypeService {
             throw new AccessDeniedException("You don't have permission to delete resource types in this federation");
         }
         
-        // Get type name for logging before deletion
-        String typeName = resourceType.get().getName();
-        
         // Delete the resource type
         resourceTypeRepository.deleteById(id);
 

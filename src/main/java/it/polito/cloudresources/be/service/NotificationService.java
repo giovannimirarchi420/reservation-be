@@ -13,7 +13,6 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -118,7 +117,7 @@ public class NotificationService {
     @Transactional
     public NotificationDTO createNotification(String keycloakId, String message, String type) {
         // Verify the user exists in Keycloak
-        UserRepresentation user = keycloakService.getUserById(keycloakId)
+        keycloakService.getUserById(keycloakId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + keycloakId));
         
         NotificationType notificationType;
