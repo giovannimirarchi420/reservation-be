@@ -154,6 +154,7 @@ public class WebhookService {
                         throw new AccessDeniedException("You don't have permission to delete this webhook");
                     }
                     
+                    webhookLogRepository.findByWebhookId(id).forEach(webhookLogRepository::delete);
                     webhookConfigRepository.deleteById(id);
                     
                     // Log the deletion

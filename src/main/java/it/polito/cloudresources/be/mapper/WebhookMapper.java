@@ -51,6 +51,8 @@ public class WebhookMapper {
                     .orElseThrow(() -> new EntityNotFoundException("Resource type not found with ID: " + dto.getResourceTypeId()));
             entity.setResourceType(resourceType);
         }
+
+        entity.setFederationId(dto.getFederationId());
         
         return entity;
     }
@@ -84,6 +86,8 @@ public class WebhookMapper {
             dto.setResourceTypeId(entity.getResourceType().getId());
             dto.setResourceTypeName(entity.getResourceType().getName());
         }
+
+        dto.setFederationId(entity.getFederationId());
         
         return dto;
     }

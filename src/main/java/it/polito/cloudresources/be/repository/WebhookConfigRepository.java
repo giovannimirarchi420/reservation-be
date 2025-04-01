@@ -55,11 +55,14 @@ public interface WebhookConfigRepository extends JpaRepository<WebhookConfig, Lo
      * - Webhooks for the resource type
      */
     @Query("SELECT DISTINCT w FROM WebhookConfig w WHERE w.enabled = true AND " +
-           "((w.resource.id = :resourceId) OR " + 
-           "(w.resource.id IN (SELECT p.id FROM Resource r JOIN r.parent p WHERE r.id = :resourceId) AND w.includeSubResources = true) OR " +
-           "(w.resourceType.id = (SELECT r.type.id FROM Resource r WHERE r.id = :resourceId))) AND " +
-           "(w.eventType = :eventType OR w.eventType = 'ALL')")
+    "(" +
+        "(w.resource.id = :resourceId) OR " + 
+        "(w.resource.id IN (SELECT p.id FROM Resource r JOIN r.parent p WHERE r.id = :resourceId) AND w.includeSubResources = true) OR " +
+        "(w.resourceType.id = (SELECT r.type.id FROM Resource r WHERE r.id = :resourceId)) OR " +
+        "(w.federationId = (SELECT r.federationId FROM Resource r WHERE r.id = :resourceId) AND w.resource IS NULL AND w.resourceType IS NULL)" +
+    ") AND " +
+    "(w.eventType = :eventType OR w.eventType = 'ALL')")
     List<WebhookConfig> findRelevantWebhooksForResourceEvent(
-            @Param("resourceId") Long resourceId, 
-            @Param("eventType") WebhookEventType eventType);
+       @Param("resourceId") Long resourceId, 
+       @Param("eventType") WebhookEventType eventType);
 }

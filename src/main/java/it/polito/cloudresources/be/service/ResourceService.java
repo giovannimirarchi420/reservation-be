@@ -6,6 +6,7 @@ import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
+import it.polito.cloudresources.be.model.WebhookEventType;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.util.DateTimeUtils;
@@ -38,6 +39,7 @@ public class ResourceService {
     private final KeycloakService keycloakService;
     private final AuditLogService auditLogService;
     private final ResourceMapper resourceMapper;
+    private final WebhookService webhookService;
     private final DateTimeUtils dateTimeUtils;
 
     public List<ResourceDTO> getAllResources(String userId) {
@@ -70,6 +72,8 @@ public class ResourceService {
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("RESOURCE", savedResource.getId().toString()),
                 "Admin " + userId + "created resource " + savedResource.getName() + " in federation " + savedResource.getFederationId() + "(id: " + savedResource.getId());
+
+        webhookService.processResourceEvent(WebhookEventType.RESOURCE_CREATED, savedResource, savedResource);
 
         return resourceMapper.toDto(savedResource);
     }
@@ -125,10 +129,12 @@ public class ResourceService {
                             new AuditLog.LogEntity("RESOURCE", savedResource.getId().toString()),
                             "Admin "+ userId + " updated resource to: " + updatedResource);
                     
+                    webhookService.processResourceEvent(WebhookEventType.RESOURCE_UPDATED, savedResource, savedResource);
                     // Check if status has changed
                     if (oldStatus != savedResource.getStatus()) {
                         // Handle status change notifications
                         handleResourceStatusChange(savedResource, oldStatus);
+                        webhookService.processResourceEvent(WebhookEventType.RESOURCE_STATUS_CHANGED, savedResource, savedResource);
                     }
                     
                     return resourceMapper.toDto(savedResource);

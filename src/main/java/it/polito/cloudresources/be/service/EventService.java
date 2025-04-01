@@ -6,6 +6,7 @@ import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
+import it.polito.cloudresources.be.model.WebhookEventType;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.util.DateTimeUtils;
@@ -38,6 +39,7 @@ public class EventService {
     private final ResourceService resourceService;
     private final KeycloakService keycloakService;
     private final AuditLogService auditLogService;
+    private final WebhookService webhookService;
     private final EventMapper eventMapper;
     private final DateTimeUtils dateTimeUtils;
 
@@ -304,6 +306,8 @@ public class EventService {
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("EVENT", savedEvent.getId().toString()),
                 "User: " + userId + " created event");
+
+        webhookService.processResourceEvent(WebhookEventType.EVENT_CREATED, resource, savedEvent);
         
         return eventMapper.toDto(savedEvent);
     }
@@ -419,6 +423,8 @@ public class EventService {
                             new AuditLog.LogEntity("EVENT", updatedEvent.getId().toString()),
                             "User: " + userId + " updated event to: " + updatedEvent);
 
+                    webhookService.processResourceEvent(WebhookEventType.EVENT_UPDATED, updatedEvent.getResource(), updatedEvent);
+
                     log.debug("Updated event: {}", updatedEvent);
                     return eventMapper.toDto(updatedEvent);
                 });
@@ -448,6 +454,8 @@ public class EventService {
                 AuditLog.LogAction.DELETE,
                 new AuditLog.LogEntity("EVENT", event.getId().toString()),
                 "User: " + userId + " deleted event: " + event);
+
+        webhookService.processResourceEvent(WebhookEventType.EVENT_DELETED, event.getResource(), event);
 
         return true;
     }

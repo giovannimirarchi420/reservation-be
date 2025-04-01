@@ -4,6 +4,7 @@ import it.polito.cloudresources.be.dto.ResourceTypeDTO;
 import it.polito.cloudresources.be.mapper.ResourceTypeMapper;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.ResourceType;
+import it.polito.cloudresources.be.model.WebhookEventType;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import lombok.RequiredArgsConstructor;

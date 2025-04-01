@@ -32,6 +32,8 @@ public class WebhookConfigDTO {
     private Long resourceId;
     private String resourceName;
     
+    private String federationId;
+    
     // Resource type information
     private Long resourceTypeId;
     private String resourceTypeName;
