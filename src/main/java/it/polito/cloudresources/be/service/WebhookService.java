@@ -62,8 +62,8 @@ public class WebhookService {
     @Transactional
     public WebhookConfigResponseDTO createWebhook(WebhookConfigDTO dto, String userId) {
         // Validate input: at least one of resourceId or resourceTypeId must be provided
-        if (dto.getResourceId() == null && dto.getResourceTypeId() == null) {
-            throw new IllegalArgumentException("Either resource or resource type must be specified");
+        if (!dto.getEventType().equals(WebhookEventType.ALL) && dto.getResourceId() == null && dto.getResourceTypeId() == null) {
+            throw new IllegalArgumentException("Either resource or resource type must be specified, or the event type must be ALL");
         }
         
         // Check authorization if resource specified

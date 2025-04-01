@@ -1,7 +1,9 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.AuditLogDTO;
+import it.polito.cloudresources.be.dto.logs.EnhancedAuditLogResponseDTO;
 import it.polito.cloudresources.be.mapper.AuditLogMapper;
+import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -52,5 +54,26 @@ public class AuditLogViewerService {
                 .stream()
                 .map(auditLogMapper::toDto)
                 .collect(Collectors.toList());
+    }
+    
+    /**
+     * Get log statistics
+     */
+    public EnhancedAuditLogResponseDTO getLogStatistics(List<AuditLogDTO> logs) {
+        EnhancedAuditLogResponseDTO response = new EnhancedAuditLogResponseDTO(logs);
+        
+        // Get total count
+        response.setTotalElements(auditLogRepository.count());
+        
+        // Get admin logs count
+        response.setAdminLogsCount(auditLogRepository.countByLogType(AuditLog.LogType.ADMIN));
+        
+        // Get user logs count
+        response.setUserLogsCount(auditLogRepository.countByLogType(AuditLog.LogType.USER));
+        
+        // Get error logs count
+        response.setErrorLogsCount(auditLogRepository.countBySeverity(AuditLog.LogSeverity.ERROR));
+        
+        return response;
     }
 }

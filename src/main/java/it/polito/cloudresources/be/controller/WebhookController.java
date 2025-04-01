@@ -178,7 +178,7 @@ public class WebhookController {
     public ResponseEntity<Object> getWebhookLogs(
             @PathVariable Long id,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) Boolean success,
             Authentication authentication) {
         try {
@@ -219,7 +219,7 @@ public class WebhookController {
 @Operation(summary = "Get all webhook logs", description = "Retrieves all webhook logs the user has access to")
 public ResponseEntity<Object> getAllWebhookLogs(
         @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size,
+        @RequestParam(defaultValue = "10") int size,
         @RequestParam(required = false) Boolean success,
         @RequestParam(required = false) String query,
         Authentication authentication) {

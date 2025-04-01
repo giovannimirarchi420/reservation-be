@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.AuditLogDTO;
-import it.polito.cloudresources.be.dto.logs.AuditLogResponseDTO;
+import it.polito.cloudresources.be.dto.logs.EnhancedAuditLogResponseDTO;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.service.AuditLogViewerService;
 import lombok.RequiredArgsConstructor;
@@ -32,11 +32,10 @@ public class AuditLogController {
     private final AuditLogViewerService auditLogViewerService;
 
     /**
-     * Get audit logs with optional filtering and pagination
-     * TODO: Implements the log retrivial with JPA Criteria Query leveraging on DB for data filtering.
+     * Get audit logs with optional filtering, pagination and statistics
      */
     @GetMapping
-    @Operation(summary = "Get audit logs", description = "Retrieves audit logs with optional filtering and pagination (Admin only)")
+    @Operation(summary = "Get audit logs", description = "Retrieves audit logs with optional filtering, pagination and statistics (Admin only)")
     public ResponseEntity<ApiResponseDTO> getAuditLogs(
             @RequestParam(required = false) String entityType,
             @RequestParam(required = false) String entityId,
@@ -68,7 +67,6 @@ public class AuditLogController {
                 logs = logs.stream()
                     .filter(log -> entityType.equals(log.getEntityType()))
                     .toList();
-                System.out.println(logs.toString());
             }
             
             if (entityId != null) {
@@ -126,7 +124,10 @@ public class AuditLogController {
                 }
             }
             
-            return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", new AuditLogResponseDTO(logs, logs.size())));
+            // Get enhanced response with statistics
+            EnhancedAuditLogResponseDTO enhancedResponse = auditLogViewerService.getLogStatistics(logs);
+            
+            return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", enhancedResponse));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new ApiResponseDTO(false, e.getMessage()));

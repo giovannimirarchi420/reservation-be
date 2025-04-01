@@ -18,4 +18,18 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
      */
     Page<AuditLog> findByDetailsContainingIgnoreCase(String searchText, Pageable pageable);
 
+    /**
+     * Count logs by log type
+     */
+    long countByLogType(AuditLog.LogType logType);
+
+    /**
+     * Count logs by severity
+     */
+    long countByLogTypeAndSeverity(AuditLog.LogType logType, AuditLog.LogSeverity severity);
+
+    /**
+     * Count all logs with ERROR severity
+     */
+    long countBySeverity(AuditLog.LogSeverity severity);
 }
