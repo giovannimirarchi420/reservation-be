@@ -1,11 +1,13 @@
 package it.polito.cloudresources.be.mapper;
 
+import it.polito.cloudresources.be.dto.FederationDTO;
 import it.polito.cloudresources.be.dto.webhooks.WebhookConfigDTO;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.model.WebhookConfig;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
+import it.polito.cloudresources.be.service.FederationService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -19,6 +21,7 @@ public class WebhookMapper {
 
     private final ResourceRepository resourceRepository;
     private final ResourceTypeRepository resourceTypeRepository;
+    private final FederationService federationService;
     
     /**
      * Convert from DTO to entity
@@ -87,7 +90,10 @@ public class WebhookMapper {
             dto.setResourceTypeName(entity.getResourceType().getName());
         }
 
+        FederationDTO federation = federationService.getFederationById(entity.getFederationId());
         dto.setFederationId(entity.getFederationId());
+        dto.setFederationName(federation.getName());
+        
         
         return dto;
     }

@@ -58,17 +58,4 @@ public class WebhookConfig extends AuditableEntity {
     // Retry configuration
     private int maxRetries = 3;
     private int retryDelaySeconds = 60;
-    
-    /**
-     * Get the federation ID of this webhook from its resource or resource type
-     */
-    @Transient
-    public String getFederationId() {
-        if (resource != null) {
-            return resource.getFederationId();
-        } else if (resourceType != null) {
-            return resourceType.getFederationId();
-        }
-        return null;
-    }
 }

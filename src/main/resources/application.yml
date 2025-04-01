@@ -38,7 +38,7 @@ logging:
     name: logs/application.log
   level:
     root: INFO
-    it.polito.cloudresources.be: INFO
+    it.polito.cloudresources.be: DEBUG
     it.polito.cloudresources.be.config.RequestLoggingFilter: DEBUG
     it.polito.cloudresources.be.config.SecurityEventLogger: INFO
     it.polito.cloudresources.be.config.MethodLoggingAspect: INFO
