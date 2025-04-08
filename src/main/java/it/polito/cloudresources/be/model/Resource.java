@@ -55,7 +55,7 @@ public class Resource extends AuditableEntity {
     private Set<Event> events = new HashSet<>();
 
     @NotBlank
-    private String federationId; // Keycloak Group ID representing the federation
+    private String siteId; // Keycloak Group ID representing the site
 
     // Helper methods for relationship management
     public void addSubResource(Resource subResource) {

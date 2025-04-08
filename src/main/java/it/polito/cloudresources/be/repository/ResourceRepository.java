@@ -28,16 +28,20 @@ public interface ResourceRepository extends JpaRepository<Resource, Long> {
      */
     List<Resource> findByTypeId(Long typeId);
 
+    List<Resource> findBySiteIdInAndTypeId(List<String> siteIds, Long typeId);
+
     /**
      * Search resources by name, specs, or location
      */
-    List<Resource> findByFederationIdInAndNameContainingOrSpecsContainingOrLocationContaining(
-        List<String> federationId, String name, String specs, String location);
+    List<Resource> findBySiteIdInAndNameContainingOrSpecsContainingOrLocationContaining(
+        List<String> siteId, String name, String specs, String location);
 
     
     List<Resource> findByParentIsNull();
 
-    List<Resource> findByFederationId(String federationId);
+    List<Resource> findBySiteId(String siteId);
     
-    List<Resource> findByFederationIdIn(List<String> federationIds);
+    List<Resource> findBySiteIdIn(List<String> siteIds);
+
+    List<Resource> findBySiteIdInAndStatus(List<String> siteIds, ResourceStatus status);
 }

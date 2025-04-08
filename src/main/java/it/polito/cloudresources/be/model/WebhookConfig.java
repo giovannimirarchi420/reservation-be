@@ -39,7 +39,7 @@ public class WebhookConfig extends AuditableEntity {
     
     private boolean enabled = true;
     
-    private String federationId;
+    private String siteId;
     // A webhook can be associated with a specific resource, resource type, or a group of resources
     
     // If not null, webhook applies to this specific resource only

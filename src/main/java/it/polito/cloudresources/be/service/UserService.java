@@ -1,13 +1,25 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.EventDTO;
+import it.polito.cloudresources.be.dto.users.CreateUserDTO;
+import it.polito.cloudresources.be.dto.users.UpdateProfileDTO;
+import it.polito.cloudresources.be.dto.users.UpdateUserDTO;
 import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.mapper.UserMapper;
 import it.polito.cloudresources.be.model.AuditLog;
+import it.polito.cloudresources.be.util.SshKeyValidator;
+import jakarta.persistence.EntityExistsException;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.keycloak.admin.client.resource.RoleResource;
+import org.keycloak.representations.idm.GroupRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 /**
@@ -22,13 +34,33 @@ public class UserService {
     private final AuditLogService auditLogService;
     private final EventService eventService;
     private final UserMapper userMapper;
+    private final SshKeyValidator sshKeyValidator;
 
     /**
      * Get all users
      * @return A list of all users
      */
-    public List<UserDTO> getAllUsers() {
-        return userMapper.toDto(keycloakService.getUsers());
+    public List<UserDTO> getAllUsers(String userId) {
+
+        if (keycloakService.hasGlobalAdminRole(userId)) {
+            return userMapper.toDto(keycloakService.getUsers());
+        }
+
+        List<String> groupsName = keycloakService.getUserAdminGroups(userId);
+        if (groupsName.isEmpty()) {
+            throw new AccessDeniedException("The user is not an administrator of any site");
+        }
+
+        List<UserDTO> usersToReturn = new ArrayList<>(List.of());
+        for(String groupName : groupsName) {
+            Optional<GroupRepresentation> group = keycloakService.getGroupByName(groupName);
+            if(group.isPresent()) {
+                List<UserRepresentation> users = keycloakService.getUsersInGroup(group.get().getId());
+                usersToReturn.addAll(userMapper.toDto(users));
+            }
+        }
+
+        return usersToReturn;
     }
 
     /**
@@ -36,9 +68,20 @@ public class UserService {
      * @param id The Keycloak user ID
      * @return Optional containing the user if found
      */
-    public Optional<UserDTO> getUserById(String id) {
-        return keycloakService.getUserById(id)
-                .map(userMapper::toDto);
+    public UserDTO getUserById(String id, String requesterUserId) {
+        if(!keycloakService.hasGlobalAdminRole(requesterUserId) &&
+           !keycloakService.getUserAdminGroups(requesterUserId).isEmpty() &&
+           !(Objects.equals(id, requesterUserId))) {
+            throw new AccessDeniedException("The user is neither a global admin nor a site admin and the requested user isn't the user itself");
+        }
+
+        Optional<UserRepresentation> userRepresentation = keycloakService.getUserById(id);
+
+        if(!userRepresentation.isPresent()) {
+            throw new EntityNotFoundException("User not found");
+        }
+
+        return userMapper.toDto(userRepresentation.get());
     }
 
     /**
@@ -63,11 +106,40 @@ public class UserService {
 
     /**
      * Create new user
-     * @param userDTO The user data transfer object containing the information for the new user
+     * @param createUserDTO The user data transfer object containing the information for the new user
      * @param password The password for the new user
      * @return The created user
      */
-    public UserDTO createUser(UserDTO userDTO, String password) {
+    public UserDTO createUser(CreateUserDTO createUserDTO, String password, String requesterUserId) {
+
+        if(keycloakService.getUserAdminGroups(requesterUserId).isEmpty() ||
+                !keycloakService.hasGlobalAdminRole(requesterUserId)) {
+            throw new AccessDeniedException("User can't create new users");
+        }
+        // Check if username already exists
+        if (getUserByUsername(createUserDTO.getUsername()).isPresent()) {
+            throw new EntityExistsException("Username already exists");
+        }
+
+        // Check if email already exists
+        if (getUserByEmail(createUserDTO.getEmail()).isPresent()) {
+            throw new EntityExistsException("Email already exists");
+        }
+
+        // Build the user DTO using UserDTO's built-in builder
+        UserDTO userDTO = UserDTO.builder()
+                .username(createUserDTO.getUsername())
+                .email(createUserDTO.getEmail())
+                .firstName(createUserDTO.getFirstName())
+                .lastName(createUserDTO.getLastName())
+                .avatar(createUserDTO.getAvatar())
+                .sshPublicKey(createUserDTO.getSshPublicKey())
+                .roles(createUserDTO.getRoles())
+                .siteId(createUserDTO.getSiteId())
+                .withGeneratedAvatarIfEmpty()
+                .withNormalizedEmail()
+                .withUppercaseRoles()
+                .build();
 
         // Create user in Keycloak
         String userId = keycloakService.createUser(userDTO, password, userDTO.getRoles());
@@ -79,7 +151,7 @@ public class UserService {
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("USER", userId),
-                ""); //FIXME: Log Admin user
+                ""); //FIXME: Log Admin user in details parameter
 
         // Retrieve and return the newly created user
         return keycloakService.getUserById(userId)
@@ -90,45 +162,51 @@ public class UserService {
     /**
      * Update existing user with optional password update
      * @param id The Keycloak user ID
-     * @param userDTO The user data to update
-     * @param password Optional new password (null to leave unchanged)
+     * @param updateUserDTO The user data to update
      * @return The updated user
      */
-    public UserDTO updateUser(String id, UserDTO userDTO, String password) {
+    public UserDTO updateUser(String id, UpdateUserDTO updateUserDTO, String requesterUserId) {
+
+        if (!(Objects.equals(id, requesterUserId) &&
+                !keycloakService.hasGlobalAdminRole(requesterUserId)) &&
+                !keycloakService.getUserAdminGroups(requesterUserId).isEmpty()
+        ) {
+            throw new AccessDeniedException("User does not have enough privileges");
+        }
         Map<String, Object> attributes = new HashMap<>();
 
         // Only update fields that are present in the DTO
-        if (userDTO.getUsername() != null) {
-            attributes.put("username", userDTO.getUsername());
+        if (updateUserDTO.getUsername() != null) {
+            attributes.put("username", updateUserDTO.getUsername());
         }
 
-        if (userDTO.getEmail() != null) {
-            attributes.put("email", userDTO.getEmail());
+        if (updateUserDTO.getEmail() != null) {
+            attributes.put("email", updateUserDTO.getEmail());
         }
 
-        if (userDTO.getFirstName() != null) {
-            attributes.put("firstName", userDTO.getFirstName());
+        if (updateUserDTO.getFirstName() != null) {
+            attributes.put("firstName", updateUserDTO.getFirstName());
         }
 
-        if (userDTO.getLastName() != null) {
-            attributes.put("lastName", userDTO.getLastName());
+        if (updateUserDTO.getLastName() != null) {
+            attributes.put("lastName", updateUserDTO.getLastName());
         }
 
-        if (userDTO.getAvatar() != null) {
-            attributes.put(KeycloakService.ATTR_AVATAR, userDTO.getAvatar());
+        if (updateUserDTO.getAvatar() != null) {
+            attributes.put(KeycloakService.ATTR_AVATAR, updateUserDTO.getAvatar());
         }
 
-        if (userDTO.getSshPublicKey() != null) {
-            attributes.put(KeycloakService.ATTR_SSH_KEY, userDTO.getSshPublicKey());
+        if (updateUserDTO.getSshPublicKey() != null) {
+            attributes.put(KeycloakService.ATTR_SSH_KEY, updateUserDTO.getSshPublicKey());
         }
 
-        if (userDTO.getRoles() != null) {
-            attributes.put("roles", new ArrayList<>(userDTO.getRoles()));
+        if (updateUserDTO.getRoles() != null) {
+            attributes.put("roles", new ArrayList<>(updateUserDTO.getRoles()));
         }
 
         // Add password to attributes if provided
-        if (password != null && !password.isEmpty()) {
-            attributes.put("password", password);
+        if (updateUserDTO.getPassword() != null && !updateUserDTO.getPassword().isEmpty()) {
+            attributes.put("password", updateUserDTO.getPassword());
         }
 
         boolean updated = keycloakService.updateUser(id, attributes);
@@ -147,15 +225,65 @@ public class UserService {
                 .orElseThrow(() -> new RuntimeException("User updated but could not be retrieved"));
     }
 
+    public UserDTO updateProfile(String id, UpdateProfileDTO profileDTO) {
+        Map<String, Object> attributes = new HashMap<>();
+
+        if (profileDTO.getEmail() != null) {
+            attributes.put("email", profileDTO.getEmail());
+        }
+
+        if (profileDTO.getFirstName() != null) {
+            attributes.put("firstName", profileDTO.getFirstName());
+        }
+
+        if (profileDTO.getLastName() != null) {
+            attributes.put("lastName", profileDTO.getLastName());
+        }
+
+        if (profileDTO.getAvatar() != null) {
+            attributes.put(KeycloakService.ATTR_AVATAR, profileDTO.getAvatar());
+        }
+
+        if (profileDTO.getSshPublicKey() != null) {
+            String sshPublicKey = sshKeyValidator.formatSshKey(profileDTO.getSshPublicKey());
+            sshKeyValidator.isValidSshPublicKey(sshPublicKey);
+            attributes.put(KeycloakService.ATTR_SSH_KEY, profileDTO.getSshPublicKey());
+        }
+
+        boolean updated = keycloakService.updateUser(id, attributes);
+        if (!updated) {
+            throw new RuntimeException("Failed to update user in Keycloak");
+        }
+
+        auditLogService.logCrudAction(AuditLog.LogType.USER,
+                AuditLog.LogAction.UPDATE,
+                new AuditLog.LogEntity("USER", id),
+                profileDTO.toString());
+
+        // Retrieve and return the updated user
+        return keycloakService.getUserById(id)
+                .map(userMapper::toDto)
+                .orElseThrow(() -> new RuntimeException("User updated but could not be retrieved"));
+    }
+
     /**
      * Delete user
-     * @param id The Keycloak user ID to delete
+     * @param deleteKeycloakId The Keycloak user ID to delete
+     * @param currentKeycloakId The Keycloak user ID that requested the deletion
      * @return true if deleted successfully, false otherwise
      */
+    @Transactional
     public boolean deleteUser(String deleteKeycloakId, String currentKeycloakId) {
         // Get username for logging before deletion
+        if (!keycloakService.hasGlobalAdminRole(currentKeycloakId) &&
+                !keycloakService.getUserAdminGroups(currentKeycloakId).isEmpty()) {
+            throw new AccessDeniedException("User does not have enough privileges");
+        }
         Optional<UserRepresentation> user = keycloakService.getUserById(deleteKeycloakId);
-        
+
+        if(!user.isPresent()) {
+            throw new EntityNotFoundException("User not found");
+        }
         List<EventDTO> userEventsToDelete = eventService.getEventsByUserKeycloakId(deleteKeycloakId, currentKeycloakId);
         
         for(EventDTO event : userEventsToDelete) {
@@ -180,29 +308,13 @@ public class UserService {
      * @param role The role to search for
      * @return List of users with the specified role
      */
-    public List<UserDTO> getUsersByRole(String role) {
-        return userMapper.toDto(keycloakService.getUsersByRole(role));
-    }
-
-    /**
-     * Update user SSH key
-     * @param id The Keycloak user ID
-     * @param sshKey The new SSH key
-     * @return The updated user
-     */
-    public UserDTO updateUserSshKey(String id, String sshKey) {
-        Map<String, Object> attributes = new HashMap<>();
-        attributes.put(KeycloakService.ATTR_SSH_KEY, sshKey);
-
-        boolean updated = keycloakService.updateUser(id, attributes);
-        if (!updated) {
-            throw new RuntimeException("Failed to update user SSH key in Keycloak");
+    public List<UserDTO> getUsersByRole(String role, String requesterId) {
+        if (!keycloakService.hasGlobalAdminRole(requesterId) &&
+                !keycloakService.getUserAdminGroups(requesterId).isEmpty()) {
+            throw new AccessDeniedException("User does not have enough privileges");
         }
 
-        // Retrieve and return the updated user
-        return keycloakService.getUserById(id)
-                .map(userMapper::toDto)
-                .orElseThrow(() -> new RuntimeException("User SSH key updated but user could not be retrieved"));
+        return userMapper.toDto(keycloakService.getUsersByRole(role));
     }
 
     /**

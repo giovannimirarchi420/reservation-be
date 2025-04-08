@@ -4,16 +4,19 @@ import it.polito.cloudresources.be.dto.ResourceTypeDTO;
 import it.polito.cloudresources.be.mapper.ResourceTypeMapper;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.ResourceType;
-import it.polito.cloudresources.be.model.WebhookEventType;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -30,10 +33,23 @@ public class ResourceTypeService {
     private final AuditLogService auditLogService;
 
     /**
-     * Get all resource types filtered by federations
+     * Get all resource types filtered by sites if not null, otherwise return all resource-types in user sites
      */
-    public List<ResourceTypeDTO> getAllResourceTypes(List<String> federationIds) {
-        return resourceTypeMapper.toDto(resourceTypeRepository.findByFederationIdIn(federationIds));
+    public List<ResourceTypeDTO> getAllResourceTypes(String userId, String siteId) {
+        if(Objects.nonNull(siteId) && !siteId.isEmpty()) {
+            if (!keycloakService.isUserInGroup(userId, siteId) &&
+                !keycloakService.hasGlobalAdminRole(userId)) {
+                throw new AccessDeniedException("User can't access resource types in this site");
+            }
+            return resourceTypeMapper.toDto(resourceTypeRepository.findBySiteId(siteId));
+        }
+
+        if(keycloakService.hasGlobalAdminRole(userId)) {
+            resourceTypeMapper.toDto(resourceTypeRepository.findAll());
+        }
+
+        List<String> userSiteIds = keycloakService.getUserSites(userId);
+        return resourceTypeMapper.toDto(resourceTypeRepository.findBySiteIdIn(userSiteIds));
     }
 
     /**
@@ -46,9 +62,20 @@ public class ResourceTypeService {
     /**
      * Get resource type by ID
      */
-    public Optional<ResourceTypeDTO> getResourceTypeById(Long id) {
-        return resourceTypeRepository.findById(id)
-                .map(resourceTypeMapper::toDto);
+    public ResourceTypeDTO getResourceTypeById(Long id, String userId) {
+        Optional<ResourceType> resourceTypeOpt = resourceTypeRepository.findById(id);
+        if(!resourceTypeOpt.isPresent()) {
+            throw new EntityNotFoundException("Resource type not found");
+        }
+
+        ResourceType resourceType = resourceTypeOpt.get();
+
+        if (!keycloakService.isUserInGroup(userId, resourceType.getSiteId()) &&
+            !keycloakService.hasGlobalAdminRole(userId)) {
+            throw new AccessDeniedException("User can't access resource type in this site");
+        }
+
+        return resourceTypeMapper.toDto(resourceType);
     }
 
     /**
@@ -56,8 +83,8 @@ public class ResourceTypeService {
      */
     @Transactional
     public ResourceTypeDTO createResourceType(ResourceTypeDTO resourceTypeDTO, String userId) {
-        if (!canUpdateResourceTypeInFederation(userId, resourceTypeDTO.getFederationId())) {
-            throw new AccessDeniedException("You don't have permission to create resource types in this federation");
+        if (!canUpdateResourceTypeInSite(userId, resourceTypeDTO.getSiteId())) {
+            throw new AccessDeniedException("User does not have permission to create resource types in this site");
         }
 
         ResourceType resourceType = resourceTypeMapper.toEntity(resourceTypeDTO);
@@ -75,27 +102,29 @@ public class ResourceTypeService {
      * Update existing resource type
      */
     @Transactional
-    public Optional<ResourceTypeDTO> updateResourceType(Long id, ResourceTypeDTO resourceTypeDTO, String userId) {
-        return resourceTypeRepository.findById(id)
-                .map(existingType -> {
-                    if (!canUpdateResourceTypeInFederation(userId, existingType.getFederationId())) {
-                        throw new AccessDeniedException("You don't have permission to create resource types in this federation");
-                    }
+    public ResourceTypeDTO updateResourceType(Long id, ResourceTypeDTO resourceTypeDTO, String userId) {
+        Optional<ResourceType> existingTypeOpt = resourceTypeRepository.findById(id);
+        if(!existingTypeOpt.isPresent()) {
+            throw new EntityNotFoundException("Resource type not found");
+        }
 
-                    // Apply updates from DTO to entity
-                    existingType.setName(resourceTypeDTO.getName());
-                    existingType.setColor(resourceTypeDTO.getColor());
-                    
-                    // Save updated entity
-                    ResourceType updatedType = resourceTypeRepository.save(existingType);
+        ResourceType resourceType = existingTypeOpt.get();
 
-                    auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
-                            AuditLog.LogAction.UPDATE,
-                            new AuditLog.LogEntity("RESOURCE-TYPE", updatedType.getId().toString()),
-                            "Admin " + userId + " updated resource type to: " + updatedType);
-                    
-                    return resourceTypeMapper.toDto(updatedType);
-                });
+        if (!canUpdateResourceTypeInSite(userId, resourceType.getSiteId())) {
+            throw new AccessDeniedException("User does not have permission to create resource types in this site");
+        }
+
+        resourceType.setName(resourceTypeDTO.getName());
+        resourceType.setColor(resourceTypeDTO.getColor());
+
+        ResourceType updatedType = resourceTypeRepository.save(resourceType);
+
+        auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                AuditLog.LogAction.UPDATE,
+                new AuditLog.LogEntity("RESOURCE-TYPE", updatedType.getId().toString()),
+                "Admin " + userId + " updated resource type to: " + updatedType);
+
+        return resourceTypeMapper.toDto(updatedType);
     }
 
     /**
@@ -103,22 +132,22 @@ public class ResourceTypeService {
      * Returns false if the type doesn't exist or is in use or the user does not have the grants
      */
     @Transactional
-    public boolean deleteResourceType(Long id, String userId) {
+    public void deleteResourceType(Long id, String userId) {
 
         Optional<ResourceType> resourceType = resourceTypeRepository.findById(id);
 
         // Check if the resource type exists
         if (!resourceType.isPresent()) {
-            return false;
+            throw new EntityNotFoundException("Resource type not found");
         }
         
         // Check if the resource type is in use
         if (!resourceRepository.findByTypeId(id).isEmpty()) {
-            return false;
+            throw new IllegalStateException("A resource using this resource type exists, delete all resources using this resource type first.");
         }
 
-        if (!canUpdateResourceTypeInFederation(userId, resourceType.get().getFederationId())) {
-            throw new AccessDeniedException("You don't have permission to delete resource types in this federation");
+        if (!canUpdateResourceTypeInSite(userId, resourceType.get().getSiteId())) {
+            throw new AccessDeniedException("User does not have permission to delete resource types in this site");
         }
         
         // Delete the resource type
@@ -128,18 +157,16 @@ public class ResourceTypeService {
                 AuditLog.LogAction.DELETE,
                 new AuditLog.LogEntity("RESOURCE-TYPE", id.toString()),
                 "Admin " + userId + " deleted resource type: " +resourceType.get() );
-        
-        return true;
     }
 
-    private boolean canUpdateResourceTypeInFederation(String userId, String federationId) {
-        // Global admins can create resources in any federation
+    private boolean canUpdateResourceTypeInSite(String userId, String siteId) {
+        // Global admins can create resources in any site
         if (keycloakService.hasGlobalAdminRole(userId)) {
             return true;
         }
         
-        // Federation admins can create resources only in their federations
-        if (keycloakService.isUserFederationAdmin(userId, federationId)) {
+        // Site admins can create resources only in their sites
+        if (keycloakService.isUserSiteAdmin(userId, siteId)) {
             return true;
         }
         

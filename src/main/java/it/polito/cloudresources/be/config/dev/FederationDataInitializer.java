@@ -37,9 +37,9 @@ public class FederationDataInitializer {
             keycloakService.ensureRealmRoles("GLOBAL_ADMIN", "FEDERATION_ADMIN", "USER");
 
             // Create sample federations
-            String poliToId = keycloakService.createFederation("Politecnico di Torino", "Turin Technical University");
-            String uniRomaId = keycloakService.createFederation("Università di Roma", "Rome University");
-            String uniMiId = keycloakService.createFederation("Università di Milano", "Milan University");
+            String poliToId = keycloakService.setupNewKeycloakGroup("polito", "Turin Technical University");
+            String uniRomaId = keycloakService.setupNewKeycloakGroup("uniroma", "Rome University");
+            String uniMiId = keycloakService.setupNewKeycloakGroup("unimi", "Milan University");
 
             log.info("Created federations with IDs: {}, {}, {}", poliToId, uniRomaId, uniMiId);
 
@@ -47,15 +47,15 @@ public class FederationDataInitializer {
             String adminId = createAdminUser(poliToId);
 
             // Add admin to all federations
-            keycloakService.addUserToFederation(adminId, poliToId);
-            keycloakService.addUserToFederation(adminId, uniRomaId);
-            keycloakService.addUserToFederation(adminId, uniMiId);
+            keycloakService.addUserToKeycloakGroup(adminId, poliToId);
+            keycloakService.addUserToKeycloakGroup(adminId, uniRomaId);
+            keycloakService.addUserToKeycloakGroup(adminId, uniMiId);
 
             // Create a regular user if needed
             String userId = createRegularUser(poliToId);
 
             // Add regular user to PoliTo only
-            keycloakService.addUserToFederation(userId, poliToId);
+            keycloakService.addUserToKeycloakGroup(userId, poliToId);
 
             // Create federation admins
             String poliToAdminId = createFederationAdmin("polito_admin", poliToId);
@@ -84,7 +84,7 @@ public class FederationDataInitializer {
                             .lastName("Admin")
                             .roles(new HashSet<>(List.of("GLOBAL_ADMIN", "ADMIN", "USER")))
                             .avatar("GA")
-                            .federationId(federationId)
+                            .siteId(federationId)
                             .build();
 
                     UserDTO createdAdmin = userService.createUser(adminDTO, "admin123");
@@ -108,7 +108,7 @@ public class FederationDataInitializer {
                             .lastName("User")
                             .roles(new HashSet<>(List.of("USER")))
                             .avatar("RU")
-                            .federationId(federationId)
+                            .siteId(federationId)
                             .build();
 
                     UserDTO createdUser = userService.createUser(userDTO, "user123");
@@ -119,7 +119,7 @@ public class FederationDataInitializer {
     /**
      * Create federation admin user
      */
-    private String createFederationAdmin(String username, String federationId) {
+    private String createFederationAdmin(String username, String siteId) {
         // Check if admin already exists
         return userService.getUserByUsername(username)
                 .map(UserDTO::getId)
@@ -132,14 +132,14 @@ public class FederationDataInitializer {
                             .lastName("Admin")
                             .roles(new HashSet<>(List.of("FEDERATION_ADMIN", "USER")))
                             .avatar(username.substring(0, 1).toUpperCase() + "A")
-                            .federationId(federationId)
+                            .siteId(siteId)
                             .build();
 
                     UserDTO createdAdmin = userService.createUser(adminDTO, "admin123");
                     String adminId = createdAdmin.getId();
 
                     // Make the user a federation admin
-                    keycloakService.makeFederationAdmin(adminId, federationId);
+                    keycloakService.assignSiteAdminRole(adminId, siteId);
 
                     return adminId;
                 });
@@ -165,13 +165,13 @@ public class FederationDataInitializer {
                     fedId = uniMiId;
                 }
 
-                resourceType.setFederationId(fedId);
+                resourceType.setSiteId(fedId);
                 resourceTypeRepository.save(resourceType);
 
                 // Update all resources of this type to match the federation
                 List<Resource> resources = resourceRepository.findByTypeId(resourceType.getId());
                 for (Resource resource : resources) {
-                    resource.setFederationId(fedId);
+                    resource.setSiteId(fedId);
                     resourceRepository.save(resource);
                 }
 

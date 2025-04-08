@@ -20,7 +20,7 @@ public class AuditLogMapper implements EntityMapper<AuditLogDTO, AuditLog> {
         auditLog.setId(dto.getId());
         auditLog.setTimestamp(dto.getTimestamp());
         auditLog.setUsername(dto.getUsername());
-        auditLog.setFederationName(dto.getFederationName());
+        auditLog.setSiteName(dto.getSiteName());
         auditLog.setLogType(dto.getLogType());
         auditLog.setEntityType(dto.getEntityType());
         auditLog.setAction(dto.getAction());
@@ -41,7 +41,7 @@ public class AuditLogMapper implements EntityMapper<AuditLogDTO, AuditLog> {
         dto.setId(entity.getId());
         dto.setTimestamp(entity.getTimestamp());
         dto.setUsername(entity.getUsername());
-        dto.setFederationName(entity.getFederationName());
+        dto.setSiteName(entity.getSiteName());
         dto.setLogType(entity.getLogType());
         dto.setEntityType(entity.getEntityType());
         dto.setAction(entity.getAction());

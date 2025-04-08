@@ -1,6 +1,7 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.ResourceDTO;
+import it.polito.cloudresources.be.dto.SiteDTO;
 import it.polito.cloudresources.be.mapper.ResourceMapper;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Event;
@@ -10,9 +11,12 @@ import it.polito.cloudresources.be.model.WebhookEventType;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.util.DateTimeUtils;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,21 +51,28 @@ public class ResourceService {
             // Global admins see all resources
             return resourceMapper.toDto(resourceRepository.findAll());
         } else {
-            // Federation admins and regular users see only resources in their federations
-            List<String> userFederations = keycloakService.getUserFederations(userId);
-            return resourceMapper.toDto(resourceRepository.findByFederationIdIn(userFederations));
+            // Site admins and regular users see only resources in their site
+            List<String> userSites = keycloakService.getUserSites(userId);
+            log.info("User requested with sites: " + userSites);
+            return resourceMapper.toDto(resourceRepository.findBySiteIdIn(userSites));
         }
     }
 
-    public List<ResourceDTO> getResourcesByFederation(String federationId) {
-        return resourceMapper.toDto(resourceRepository.findByFederationId(federationId));
+    public List<ResourceDTO> getResourcesBySite(String siteId, String currentUserKeycloakId) {
+        // Check if user has access to this site
+        if (!keycloakService.isUserInGroup(currentUserKeycloakId, siteId) &&
+            !keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
+            throw new AccessDeniedException("User don't have permission to access resources in this site");
+        }
+
+        return resourceMapper.toDto(resourceRepository.findBySiteId(siteId));
     }
     
     @Transactional
     public ResourceDTO createResource(ResourceDTO resourceDTO, String userId) {
         // Check authorization
-        if (!canUpdateResourceInFederation(userId, resourceDTO.getFederationId())) {
-            throw new AccessDeniedException("You don't have permission to create resources in this federation");
+        if (!canUpdateResourceInSite(userId, resourceDTO.getSiteId())) {
+            throw new AccessDeniedException("You don't have permission to create resources in this site");
         }
         
         // Create resource
@@ -71,35 +82,46 @@ public class ResourceService {
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("RESOURCE", savedResource.getId().toString()),
-                "Admin " + userId + "created resource " + savedResource.getName() + " in federation " + savedResource.getFederationId() + "(id: " + savedResource.getId());
+                "Admin " + userId + "created resource " + savedResource.getName() + " in site " + savedResource.getSiteId() + "(id: " + savedResource.getId());
 
         webhookService.processResourceEvent(WebhookEventType.RESOURCE_CREATED, savedResource, savedResource);
 
         return resourceMapper.toDto(savedResource);
     }
-    
-    // Similar changes for update, delete, etc.
 
     /**
      * Get resource by ID
      */
-    public Optional<ResourceDTO> getResourceById(Long id) {
-        return resourceRepository.findById(id)
-                .map(resourceMapper::toDto);
+    public ResourceDTO getResourceById(Long id, String userId) {
+        Optional<Resource> resource = resourceRepository.findById(id);
+
+        if(!resource.isPresent()) {
+            throw new EntityNotFoundException("Resource not found");
+        }
+
+        String siteId = resource.get().getSiteId();
+
+        if (!keycloakService.getUserSites(userId).contains(siteId)) {
+            throw new AccessDeniedException("Resource can't be accessed by user");
+        }
+
+        return resourceMapper.toDto(resource.get());
     }
 
     /**
      * Get resources by status
      */
-    public List<ResourceDTO> getResourcesByStatus(ResourceStatus status) {
-        return resourceMapper.toDto(resourceRepository.findByStatus(status));
+    public List<ResourceDTO> getResourcesByStatus(ResourceStatus status, String userId) {
+        List<String> siteIds = keycloakService.getUserSites(userId);
+        return resourceMapper.toDto(resourceRepository.findBySiteIdInAndStatus(siteIds, status));
     }
 
     /**
      * Get resources by type
      */
-    public List<ResourceDTO> getResourcesByType(Long typeId) {
-        return resourceMapper.toDto(resourceRepository.findByTypeId(typeId));
+    public List<ResourceDTO> getResourcesByType(Long typeId, String userId) {
+        List<String> siteIds = keycloakService.getUserSites(userId);
+        return resourceMapper.toDto(resourceRepository.findBySiteIdInAndTypeId(siteIds, typeId));
     }
 
     /**
@@ -108,8 +130,8 @@ public class ResourceService {
     @Transactional
     public Optional<ResourceDTO> updateResource(Long id, ResourceDTO resourceDTO, String userId) {
         // Check authorization
-        if (!canUpdateResourceInFederation(userId, resourceDTO.getFederationId())) {
-            throw new AccessDeniedException("You don't have permission to update resources in this federation");
+        if (!canUpdateResourceInSite(userId, resourceDTO.getSiteId())) {
+            throw new AccessDeniedException("You don't have permission to update resources in this site");
         }
 
         return resourceRepository.findById(id)
@@ -150,8 +172,8 @@ public class ResourceService {
                 .map(existingResource -> {
         
                     // Check authorization
-                    if (!canUpdateResourceInFederation(userId, existingResource.getFederationId())) {
-                        throw new AccessDeniedException("You don't have permission to update resources in this federation");
+                    if (!canUpdateResourceInSite(userId, existingResource.getSiteId())) {
+                        throw new AccessDeniedException("You don't have permission to update resources in this site");
                     }
         
                     ResourceStatus oldStatus = existingResource.getStatus();
@@ -174,67 +196,69 @@ public class ResourceService {
      * Delete resource
      */
     @Transactional
-    public boolean deleteResource(Long id, String userId) {
+    public void deleteResource(Long id, String userId) {
         Optional<Resource> resourceOpt = resourceRepository.findById(id);
-        if (resourceOpt.isPresent()) {
-            Resource resource = resourceOpt.get();
-            // Check authorization
-            if (!canUpdateResourceInFederation(userId, resource.getFederationId())) {
-                throw new AccessDeniedException("You don't have permission to update resources in this federation");
-            }
-            // Check if resource has future bookings
-            ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
-            List<Event> futureEvents = eventRepository.findByResourceId(id).stream()
-                    .filter(event -> event.getEnd().isAfter(now))
-                    .collect(Collectors.toList());
-            
-            // Notify users with future bookings
-            if (!futureEvents.isEmpty()) {
-                Set<String> keycloakIdsToNotify = new HashSet<>();
-                
-                // Collect all unique users with future bookings
-                // Delete all future bookings
-                for (Event event : futureEvents) {
-                    keycloakIdsToNotify.add(event.getKeycloakId());
-                    eventRepository.delete(event);
-                }
 
-                // Send notification to each affected user
-                for (String keycloakId : keycloakIdsToNotify) {
-                    notificationService.createNotification(
+        if(!resourceOpt.isPresent()) {
+            throw new EntityNotFoundException("Resource not found");
+        }
+
+        Resource resource = resourceOpt.get();
+
+        if (!canUpdateResourceInSite(userId, resource.getSiteId())) {
+            throw new AccessDeniedException("You don't have permission to update resources in this site");
+        }
+
+        ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
+        List<Event> futureEvents = eventRepository.findByResourceId(id).stream()
+                .filter(event -> event.getEnd().isAfter(now))
+                .collect(Collectors.toList());
+
+        // Notify users with future bookings
+        if (!futureEvents.isEmpty()) {
+            Set<String> keycloakIdsToNotify = new HashSet<>();
+
+            // Collect all unique users with future bookings
+            // Delete all future bookings
+            for (Event event : futureEvents) {
+                keycloakIdsToNotify.add(event.getKeycloakId());
+                eventRepository.delete(event);
+            }
+
+            // Send notification to each affected user
+            for (String keycloakId : keycloakIdsToNotify) {
+                notificationService.createNotification(
                         keycloakId,
                         "Booking cancelled: Resource " + resource.getName() + " has been removed",
                         "ERROR"
-                    );
-                }
+                );
             }
-
-            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
-                    AuditLog.LogAction.DELETE,
-                    new AuditLog.LogEntity("RESOURCE", id.toString()),
-                    "Admin " + userId + " deleted resource: " + resource);
-            
-            // Delete the resource
-            resourceRepository.deleteById(id);
-            
-            // Notify admins about deletion
-            notificationService.createSystemNotification(
-                "Resource deleted", 
-                "Resource " + resource.getName() + " has been deleted from the system"
-            );
-            
-            return true;
         }
-        return false;
+
+        auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                AuditLog.LogAction.DELETE,
+                new AuditLog.LogEntity("RESOURCE", id.toString()),
+                "Admin " + userId + " deleted resource: " + resource);
+
+        // Delete the resource
+        resourceRepository.deleteById(id);
+
+        // Notify admins about deletion
+        notificationService.createSystemNotification(
+                "Resource deleted",
+                "Resource " + resource.getName() + " has been deleted from the system"
+        );
     }
 
     /**
      * Search resources
      */
-    public List<ResourceDTO> searchResources(String query, List<String> federationIds) {
+    public List<ResourceDTO> searchResources(String query, String userId) {
+        List<String> siteIds = keycloakService.getUserSites(userId);
+
         return resourceMapper.toDto(
-                resourceRepository.findByFederationIdInAndNameContainingOrSpecsContainingOrLocationContaining(
-                    federationIds, query, query, query)
+                resourceRepository.findBySiteIdInAndNameContainingOrSpecsContainingOrLocationContaining(
+                    siteIds, query, query, query)
         );
     }
 
@@ -296,8 +320,7 @@ public class ResourceService {
             // Find all users with upcoming bookings for this resource
             ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
             List<Event> futureEvents = eventRepository.findByResourceId(resource.getId()).stream()
-                    .filter(event -> event.getEnd().isAfter(now))
-                    .collect(Collectors.toList());
+                    .filter(event -> event.getEnd().isAfter(now)).toList();
             
             // Create a set to avoid duplicate notifications to the same user
             Set<String> keycloakIdsToNotify = new HashSet<>();
@@ -331,14 +354,28 @@ public class ResourceService {
         });
     }
 
-    private boolean canUpdateResourceInFederation(String userId, String federationId) {
-        // Global admins can create resources in any federation
+    
+    /**
+     * Check if user can access a resource (is in the resource's site)
+     */
+    public boolean canAccessResource(String userId, Resource resource) {
+        // Global admins can access all resources
         if (keycloakService.hasGlobalAdminRole(userId)) {
             return true;
         }
         
-        // Federation admins can create resources only in their federations
-        if (keycloakService.isUserFederationAdmin(userId, federationId)) {
+        // Check if user is in the resource's site
+        return keycloakService.isUserInGroup(userId, resource.getSiteId());
+    }
+
+    private boolean canUpdateResourceInSite(String userId, String siteId) {
+        // Global admins can create resources in any site
+        if (keycloakService.hasGlobalAdminRole(userId)) {
+            return true;
+        }
+        
+        // Site admins can create resources only in their sites
+        if (keycloakService.isUserSiteAdmin(userId, siteId)) {
             return true;
         }
         

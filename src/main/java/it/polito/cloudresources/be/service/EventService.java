@@ -26,7 +26,6 @@ import java.util.stream.Collectors;
 
 /**
  * Service for event operations with consistent time zone handling
- * Updated to support federation access control
  */
 @Service
 @RequiredArgsConstructor
@@ -44,75 +43,58 @@ public class EventService {
     private final DateTimeUtils dateTimeUtils;
 
     /**
-     * Get all events based on user federation access
+     * Get all events based on user site access
      */
     public List<EventDTO> getAllEvents(String userId) {
         if (keycloakService.hasGlobalAdminRole(userId)) {
             // Global admins see all events
             return eventMapper.toDto(eventRepository.findAll());
         } else {
-            // Federation admins and regular users see only events for resources in their federations
-            List<String> userFederations = keycloakService.getUserFederations(userId);
-            
-            // Get all resources from user's federations
-            List<Resource> federationResources = resourceRepository.findByFederationIdIn(userFederations);
-            
-            if (federationResources.isEmpty()) {
+            // Site admins and regular users see only events for resources in their sites
+            List<String> userSites = keycloakService.getUserSites(userId);
+
+            if (userSites.isEmpty()) {
                 return new ArrayList<>();
             }
-            
-            // Extract resource IDs
-            List<Long> resourceIds = federationResources.stream()
-                .map(Resource::getId)
-                .collect(Collectors.toList());
-                
-            // Get events for these resources
-            List<Event> events = eventRepository.findByResourceIdIn(resourceIds);
+
+            List<Event> events = eventRepository.findBySiteIds(userSites);
             return eventMapper.toDto(events);
         }
     }
 
-    public List<EventDTO> getEventsByFederation(String federationId, String userId) {
+    /**
+     * Get events by site
+     */
+    public List<EventDTO> getEventsBySite(String siteId, String userId) {
         // Validate user has access
-        if (!keycloakService.isUserInFederation(userId, federationId) && 
-            !keycloakService.hasGlobalAdminRole(userId)) {
-            throw new AccessDeniedException("User does not have access to this federation");
+        if (!keycloakService.isUserInGroup(userId, siteId) &&
+                !keycloakService.hasGlobalAdminRole(userId)) {
+            throw new AccessDeniedException("User does not have access to this site");
         }
-        
-        // Get resources in this federation
-        List<Resource> federationResources = resourceRepository.findByFederationId(federationId);
-        
-        if (federationResources.isEmpty()) {
-            return new ArrayList<>();
-        }
-        
-        // Get events for these resources
-        List<Long> resourceIds = federationResources.stream()
-            .map(Resource::getId)
-            .collect(Collectors.toList());
-            
-        List<Event> events = eventRepository.findByResourceIdIn(resourceIds);
+
+        List<Event> events = eventRepository.findBySiteId(siteId);
+
         return eventMapper.toDto(events);
     }
 
     /**
      * Get event by ID
      */
-    public Optional<EventDTO> getEventById(Long id, String userId) {
+    public EventDTO getEventById(Long id, String userId) {
         Optional<Event> eventOpt = eventRepository.findById(id);
         
         if (!eventOpt.isPresent()) {
-            return Optional.empty();
+            throw new EntityNotFoundException("Event " + id + " not found");
         }
         
         Event event = eventOpt.get();
         
         // Check if the user can access this event
         if (!canAccessEvent(userId, event)) {
-            return Optional.empty();
+            throw new AccessDeniedException("User " + userId + " can't access event " + id);
         }
         
-        return Optional.of(eventMapper.toDto(event));
+        return eventMapper.toDto(event);
     }
 
     /**
@@ -123,7 +105,7 @@ public class EventService {
         Resource resource = resourceRepository.findById(resourceId)
                 .orElseThrow(() -> new EntityNotFoundException("Resource not found with ID: " + resourceId));
         
-        if (!canAccessResource(userId, resource)) {
+        if (!resourceService.canAccessResource(userId, resource)) {
             throw new AccessDeniedException("You don't have access to events for this resource");
         }
         
@@ -134,47 +116,35 @@ public class EventService {
      * Get events by user's Keycloak ID
      */
     public List<EventDTO> getEventsByUserKeycloakId(String keycloakId, String requestUserId) {
-        // Users can always see their own events, administrators see events from their federation
+        // Users can always see their own events, administrators see events from their site
         if (keycloakId.equals(requestUserId) || keycloakService.hasGlobalAdminRole(requestUserId)) {
             return eventMapper.toDto(eventRepository.findByKeycloakId(keycloakId));
         }
         
-        // Federation admins can see events from users in their federations
-        List<String> adminFederations = keycloakService.getUserAdminFederations(requestUserId);
-        List<String> userFederations = keycloakService.getUserFederations(keycloakId);
+        // Site admins can see events from users in their sites
+        List<String> adminSites = keycloakService.getUserAdminGroups(requestUserId);
+        List<String> userSites = keycloakService.getUserSites(keycloakId);
         
-        // Check if the request user is admin of any federation the target user belongs to
-        boolean hasAdminAccess = adminFederations.stream()
-                .anyMatch(userFederations::contains);
+        // Check if the request user is admin of any site the target user belongs to
+        boolean hasAdminAccess = adminSites.stream()
+                .anyMatch(userSites::contains);
         
         if (!hasAdminAccess) {
             throw new AccessDeniedException("You don't have access to this user's events");
         }
         
-        // Get the user's events but filter to only federations the admin has access to
-        List<String> commonFederations = adminFederations.stream()
-                .filter(userFederations::contains)
+        // Get the user's events but filter to only sites the admin has access to
+        List<String> commonSites = adminSites.stream()
+                .filter(userSites::contains)
                 .collect(Collectors.toList());
                 
-        List<Resource> accessibleResources = resourceRepository.findByFederationIdIn(commonFederations);
-        
-        if (accessibleResources.isEmpty()) {
+
+        List<Event> userEvents = eventRepository.findBySiteIds(commonSites);
+        if (userEvents.isEmpty()) {
             return new ArrayList<>();
         }
-        
-        List<Long> resourceIds = accessibleResources.stream()
-                .map(Resource::getId)
-                .collect(Collectors.toList());
                 
-        // Get all events for this user
-        List<Event> userEvents = eventRepository.findByKeycloakId(keycloakId);
-        
-        // Filter to only events for resources in accessible federations
-        List<Event> accessibleEvents = userEvents.stream()
-                .filter(event -> resourceIds.contains(event.getResource().getId()))
-                .collect(Collectors.toList());
-                
-        return eventMapper.toDto(accessibleEvents);
+        return eventMapper.toDto(userEvents);
     }
 
     /**
@@ -187,18 +157,18 @@ public class EventService {
         
         List<Event> events = eventRepository.findByDateRange(normalizedStartDate, normalizedEndDate);
         
-        // Filter events based on federation access
+        // Filter events based on site access
         List<Event> accessibleEvents;
         
         if (keycloakService.hasGlobalAdminRole(userId)) {
             // Global admins see all events
             accessibleEvents = events;
         } else {
-            // Federation users see only events for resources in their federations
-            List<String> userFederations = keycloakService.getUserFederations(userId);
+            // Site users see only events for resources in their sites
+            List<String> userSites = keycloakService.getUserSites(userId);
             
             accessibleEvents = events.stream()
-                    .filter(event -> userFederations.contains(event.getResource().getFederationId()))
+                    .filter(event -> userSites.contains(event.getResource().getSiteId()))
                     .collect(Collectors.toList());
         }
         
@@ -215,18 +185,11 @@ public class EventService {
         eventDTO.setStart(dateTimeUtils.ensureTimeZone(eventDTO.getStart()));
         eventDTO.setEnd(dateTimeUtils.ensureTimeZone(eventDTO.getEnd()));
         // Set current time if not provided by frontend
-        if (eventDTO.getStart() == null) {
-            eventDTO.setStart(dateTimeUtils.getCurrentDateTime());
+        if (eventDTO.getStart() == null || eventDTO.getEnd() == null) {
+            throw new IllegalStateException("Event must have a start end an end time");
         } else {
             // Ensure time zone info for start
             eventDTO.setStart(dateTimeUtils.ensureTimeZone(eventDTO.getStart()));
-        }
-        
-        if (eventDTO.getEnd() == null) {
-            // Default to 1 hour later if end time not provided
-            eventDTO.setEnd(dateTimeUtils.getCurrentDateTime().plusHours(1));
-        } else {
-            // Ensure time zone info for end
             eventDTO.setEnd(dateTimeUtils.ensureTimeZone(eventDTO.getEnd()));
         }
         
@@ -239,8 +202,8 @@ public class EventService {
         Resource resource = resourceRepository.findById(eventDTO.getResourceId())
                 .orElseThrow(() -> new EntityNotFoundException("Resource not found with ID: " + eventDTO.getResourceId()));
         
-        // Check if user has access to this resource's federation
-        if (!canAccessResource(userId, resource)) {
+        // Check if user has access to this resource's site
+        if (!resourceService.canAccessResource(userId, resource)) {
             throw new AccessDeniedException("You don't have access to book this resource");
         }
         
@@ -258,15 +221,15 @@ public class EventService {
         String eventUserId = eventDTO.getUserId() != null ? eventDTO.getUserId() : userId;
         
         if (!eventUserId.equals(userId)) {
-            // Check if the requester is admin for the resource's federation
+            // Check if the requester is admin for the resource's site
             if (!keycloakService.hasGlobalAdminRole(userId) && 
-                !keycloakService.isUserFederationAdmin(userId, resource.getFederationId())) {
+                !keycloakService.isUserSiteAdmin(userId, resource.getSiteId())) {
                 throw new AccessDeniedException("Only administrators can create bookings for other users");
             }
             
-            // Check if the target user is in the federation
-            if (!keycloakService.isUserInFederation(eventUserId, resource.getFederationId())) {
-                throw new IllegalStateException("The user must be a member of the resource's federation to book it");
+            // Check if the target user is in the site
+            if (!keycloakService.isUserInGroup(eventUserId, resource.getSiteId())) {
+                throw new IllegalStateException("The user must be a member of the resource's site to book it");
             }
         }
         
@@ -342,7 +305,7 @@ public class EventService {
                         Resource newResource = resourceRepository.findById(eventDTO.getResourceId())
                                 .orElseThrow(() -> new EntityNotFoundException("Resource not found"));
                         
-                        if (!canAccessResource(userId, newResource)) {
+                        if (!resourceService.canAccessResource(userId, newResource)) {
                             throw new AccessDeniedException("You don't have access to the new resource");
                         }
                     }
@@ -398,9 +361,9 @@ public class EventService {
                     if (eventDTO.getUserId() != null && !eventDTO.getUserId().equals(existingEvent.getKeycloakId())) {
                         // Only admins can change the user
                         boolean isGlobalAdmin = keycloakService.hasGlobalAdminRole(userId);
-                        boolean isFederationAdmin = keycloakService.isUserFederationAdmin(userId, existingEvent.getResource().getFederationId());
+                        boolean isSiteAdmin = keycloakService.isUserSiteAdmin(userId, existingEvent.getResource().getSiteId());
                         
-                        if (!isGlobalAdmin && !isFederationAdmin) {
+                        if (!isGlobalAdmin && !isSiteAdmin) {
                             throw new AccessDeniedException("Only administrators can change the booking owner");
                         }
                         
@@ -408,9 +371,9 @@ public class EventService {
                         keycloakService.getUserById(eventDTO.getUserId())
                             .orElseThrow(() -> new EntityNotFoundException("User not found with Keycloak ID: " + eventDTO.getUserId()));
                         
-                        // Check if the new user is in the federation
-                        if (!keycloakService.isUserInFederation(eventDTO.getUserId(), existingEvent.getResource().getFederationId())) {
-                            throw new IllegalStateException("The new user must be a member of the resource's federation");
+                        // Check if the new user is in the site
+                        if (!keycloakService.isUserInGroup(eventDTO.getUserId(), existingEvent.getResource().getSiteId())) {
+                            throw new IllegalStateException("The new user must be a member of the resource's site");
                         }
                             
                         existingEvent.setKeycloakId(eventDTO.getUserId());
@@ -515,13 +478,13 @@ public class EventService {
     public boolean isResourceAvailableForBooking(Long resourceId, String userId) {
         return resourceRepository.findById(resourceId)
                 .map(resource -> 
-                    resource.getStatus() == ResourceStatus.ACTIVE && canAccessResource(userId, resource)
+                    resource.getStatus() == ResourceStatus.ACTIVE && resourceService.canAccessResource(userId, resource)
                 )
                 .orElse(false);
     }
 
     /**
-     * Check if user can modify an event (owns it or is admin of the resource's federation)
+     * Check if user can modify an event (owns it or is admin of the resource's site)
      */
     private boolean canModifyEvent(String userId, Event event) {
         // User is the owner of the event
@@ -534,13 +497,13 @@ public class EventService {
             return true;
         }
         
-        // Federation admins can modify events in their federations
-        String federationId = event.getResource().getFederationId();
-        return keycloakService.isUserFederationAdmin(userId, federationId);
+        // Site admins can modify events in their sites
+        String siteId = event.getResource().getSiteId();
+        return keycloakService.isUserSiteAdmin(userId, siteId);
     }
 
     /**
-     * Check if user can access an event (owns it or is in the resource's federation)
+     * Check if user can access an event (owns it or is in the resource's site)
      */
     private boolean canAccessEvent(String userId, Event event) {
         // User is the owner of the event
@@ -553,21 +516,9 @@ public class EventService {
             return true;
         }
         
-        // Check if user is in the event resource's federation
-        String federationId = event.getResource().getFederationId();
-        return keycloakService.isUserInFederation(userId, federationId);
+        // Check if user is in the event resource's site
+        String siteId = event.getResource().getSiteId();
+        return keycloakService.isUserInGroup(userId, siteId);
     }
 
-    /**
-     * Check if user can access a resource (is in the resource's federation)
-     */
-    private boolean canAccessResource(String userId, Resource resource) {
-        // Global admins can access all resources
-        if (keycloakService.hasGlobalAdminRole(userId)) {
-            return true;
-        }
-        
-        // Check if user is in the resource's federation
-        return keycloakService.isUserInFederation(userId, resource.getFederationId());
-    }
 }   

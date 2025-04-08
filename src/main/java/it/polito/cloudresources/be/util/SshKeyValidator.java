@@ -19,13 +19,10 @@ public class SshKeyValidator {
      * @param sshKey the SSH key to validate
      * @return true if the key is valid, false otherwise
      */
-    public boolean isValidSshPublicKey(String sshKey) {
-        if (sshKey == null || sshKey.trim().isEmpty()) {
-            return false;
+    public void isValidSshPublicKey(String sshKey) {
+        if (sshKey == null || sshKey.trim().isEmpty() || !SSH_KEY_PATTERN.matcher(sshKey.trim()).matches()) {
+            throw new IllegalArgumentException("SSH key not valid");
         }
-        
-        Matcher matcher = SSH_KEY_PATTERN.matcher(sshKey.trim());
-        return matcher.matches();
     }
     
     /**

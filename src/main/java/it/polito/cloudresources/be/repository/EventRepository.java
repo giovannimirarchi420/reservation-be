@@ -27,7 +27,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     List<Event> findByResource(Resource resource);
 
     /**
-     * Find events by multiple resource IDs (for federation-based filtering)
+     * Find events by multiple resource IDs (for site-based filtering)
      */
     List<Event> findByResourceIdIn(List<Long> resourceIds);
 
@@ -56,4 +56,20 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             @Param("start") ZonedDateTime start,
             @Param("end") ZonedDateTime end,
             @Param("eventId") Long eventId);
+
+    /**
+     *
+     * @param siteIds
+     * @return All events related to the input sites
+     */
+    @Query("SELECT e FROM Event e JOIN e.resource r WHERE r.siteId IN :siteIds")
+    List<Event> findBySiteIds(@Param("siteIds") List<String> siteIds);
+
+    /**
+     *
+     * @param siteId
+     * @return All events related to the input site
+     */
+    @Query("SELECT e FROM Event e JOIN e.resource r WHERE r.siteId = :siteId")
+    List<Event> findBySiteId(@Param("siteId") String siteId);
 }

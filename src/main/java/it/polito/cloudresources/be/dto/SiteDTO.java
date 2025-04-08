@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class FederationDTO {
+public class SiteDTO {
     private String id;
     
     @NotBlank(message = "Name is required")

@@ -35,8 +35,8 @@ public class ResourceType extends AuditableEntity {
     @OneToMany(mappedBy = "type", cascade = CascadeType.ALL)
     private Set<Resource> resources = new HashSet<>();
 
-    @Column(name = "federation_id")
+    @Column(name = "site_id")
     @NotBlank
-    private String federationId; // Keycloak Group ID representing the federation
+    private String siteId; // Keycloak Group ID representing the site
 
 }

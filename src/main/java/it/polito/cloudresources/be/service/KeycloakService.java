@@ -17,10 +17,10 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import it.polito.cloudresources.be.dto.FederationDTO;
-import it.polito.cloudresources.be.mapper.FederationMapper;
+import it.polito.cloudresources.be.mapper.SiteMapper;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -37,7 +37,7 @@ public class KeycloakService {
     public static final String ATTR_AVATAR = "avatar";
     
     @Autowired
-    private FederationMapper federationMapper;
+    private SiteMapper siteMapper;
 
     @Value("${keycloak.auth-server-url}")
     private String authServerUrl;
@@ -160,11 +160,8 @@ public class KeycloakService {
 
             // Assign roles to user
             if (roles != null && !roles.isEmpty()) {
-                assignRolesToUser(userId, roles);
+                assignRolesToUser(userId);
             }
-
-            // Add user to federation
-            addUserToFederation(userId, userDTO.getFederationId());
 
             return userId;
         } catch (Exception e) {
@@ -241,61 +238,6 @@ public class KeycloakService {
 
                 userResource.resetPassword(credential);
                 log.debug("Password updated for user: {}", userId);
-            }
-
-            // Update roles if provided
-            if (attributes.containsKey("roles")) {
-                try {
-                    @SuppressWarnings("unchecked")
-                    List<String> roles = (List<String>) attributes.get("roles");
-                    log.debug("Updating roles for user {}: {}", userId, roles);
-
-                    // Get user resource and roles
-                    var userRolesResource = userResource.roles();
-                    
-                    // Get current assigned realm roles
-                    var currentRoles = userRolesResource.realmLevel().listEffective();
-                    log.debug("Current effective roles for user {}: {}", userId, 
-                            currentRoles.stream().map(RoleRepresentation::getName).collect(Collectors.toList()));
-                    
-                    // Get all available realm roles 
-                    var availableRoles = getRealmResource().roles().list();
-                    Map<String, RoleRepresentation> availableRolesMap = availableRoles.stream()
-                        .collect(Collectors.toMap(
-                            RoleRepresentation::getName,
-                            role -> role,
-                            (r1, r2) -> r1  // In case of duplicate names, keep the first one
-                        ));
-                    
-                    // Ensure roles exist in realm
-                    for (String roleName : roles) {
-                        if (!availableRolesMap.containsKey(roleName)) {
-                            log.warn("Role not found in realm: {}", roleName);
-                        }
-                    }
-
-                    // Filter for existing roles only
-                    List<RoleRepresentation> rolesToAdd = roles.stream()
-                        .filter(availableRolesMap::containsKey)
-                        .map(availableRolesMap::get)
-                        .collect(Collectors.toList());
-                    
-                    if (!rolesToAdd.isEmpty()) {
-                        log.debug("Removing all current roles for user: {}", userId);
-                        // Remove all current roles
-                        userRolesResource.realmLevel().remove(currentRoles);
-                        
-                        log.debug("Adding roles for user {}: {}", userId, 
-                                rolesToAdd.stream().map(RoleRepresentation::getName).collect(Collectors.toList()));
-                        // Add new roles
-                        userRolesResource.realmLevel().add(rolesToAdd);
-                    } else {
-                        log.warn("No valid roles found to add for user: {}", userId);
-                    }
-                } catch (Exception e) {
-                    log.error("Error updating roles for user: {}", userId, e);
-                    // Don't throw exception - continue with the update even if roles fail
-                }
             }
 
             log.info("User updated in Keycloak: {}", userId);
@@ -387,38 +329,6 @@ public class KeycloakService {
     }
 
     /**
-     * Check if Keycloak is properly configured and accessible
-     */
-    public boolean isKeycloakAvailable() {
-        try {
-            getRealmResource().toRepresentation();
-            return true;
-        } catch (Exception e) {
-            log.error("Error connecting to Keycloak", e);
-            return false;
-        }
-    }
-
-    /**
-     * Get available client roles for our client
-     */
-    public List<String> getAvailableClientRoles() {
-        try {
-            return getRealmResource().clients().findByClientId(clientId)
-                    .stream()
-                    .findFirst()
-                    .map(client -> getRealmResource().clients().get(client.getId()).roles().list()
-                            .stream()
-                            .map(RoleRepresentation::getName)
-                            .toList())
-                    .orElse(Collections.emptyList());
-        } catch (Exception e) {
-            log.error("Error fetching client roles from Keycloak", e);
-            return Collections.emptyList();
-        }
-    }
-
-    /**
      * Find users by role
      */
     public List<UserRepresentation> getUsersByRole(String roleName) {
@@ -441,68 +351,92 @@ public class KeycloakService {
         }
     }
 
-    public List<GroupRepresentation> getAllFederations() {
+    public List<GroupRepresentation> getAllGroups() {
         return getRealmResource().groups().groups();
     }
     
-    public Optional<GroupRepresentation> getFederationById(String federationId) {
+    public Optional<GroupRepresentation> getGroupById(String groupId) {
         try {
-            GroupRepresentation group = getRealmResource().groups().group(federationId).toRepresentation();
+            GroupRepresentation group = getRealmResource().groups().group(groupId).toRepresentation();
             return Optional.of(group);
         } catch (Exception e) {
-            log.error("Error fetching federation", e);
+            log.error("Error fetching site", e);
             return Optional.empty();
         }
     }
-    
+
+    public Optional<GroupRepresentation> getGroupByName(String groupName) {
+        try {
+            return getRealmResource().groups().groups().stream()
+                    .filter(group -> group.getName() == groupName)
+                    .findFirst();
+        } catch (Exception e) {
+            log.error("Error fetching site", e);
+            return Optional.empty();
+        }
+    }
     /**
-     * Create a federation from a GroupRepresentation
+     * Create a site from a GroupRepresentation
      */
-    public String createFederation(GroupRepresentation group) {
+    public String setupNewKeycloakGroup(GroupRepresentation group) {
         try {
             Response response = getRealmResource().groups().add(group);
             if (response.getStatus() == 201) {
                 String locationPath = response.getLocation().getPath();
-                String federationId = locationPath.substring(locationPath.lastIndexOf('/') + 1);
-                log.info("Created federation with ID: {}", federationId);
-                return federationId;
+                String siteId = locationPath.substring(locationPath.lastIndexOf('/') + 1);
+                log.info("Created group with ID: {}", siteId);
+                return siteId;
             } else {
-                log.error("Failed to create federation. Status: {}", response.getStatus());
+                log.error("Failed to create group. Status: {}", response.getStatus());
             }
         } catch (Exception e) {
-            log.error("Error creating federation", e);
+            log.error("Error creating group", e);
         }
         return null;
     }
-    
+
     /**
-     * Create a federation with name and description
+     * Creates a new site
      */
-    public String createFederation(String name, String description) {
+    public String setupNewKeycloakGroup(String name, String description) {
         GroupRepresentation group = new GroupRepresentation();
         group.setName(name);
-        
+
         // Set attributes for the description
         Map<String, List<String>> attributes = new HashMap<>();
         if (description != null && !description.isEmpty()) {
             attributes.put("description", Collections.singletonList(description));
             group.setAttributes(attributes);
         }
-        
-        return createFederation(group);
+
+        String groupId = setupNewKeycloakGroup(group);
+
+        // Create the site admin role
+        if (groupId != null) {
+            createSiteAdminRole(name);
+        }
+
+        // When a new site is created, add all existing users to it
+        if (groupId != null) {
+            List<UserRepresentation> allUsers = getUsers();
+            for (UserRepresentation user : allUsers) {
+                addUserToKeycloakGroup(user.getId(), groupId);
+            }
+        }
+        return groupId;
     }
     
     /**
-     * Update an existing federation
+     * Update an existing site
      */
-    public boolean updateFederation(String federationId, GroupRepresentation updatedGroup) {
+    public boolean updateGroup(String groupId, GroupRepresentation updatedGroup) {
         try {
             // First get the current group to ensure it exists
-            GroupResource groupResource = getRealmResource().groups().group(federationId);
+            GroupResource groupResource = getRealmResource().groups().group(groupId);
             GroupRepresentation currentGroup = groupResource.toRepresentation();
             
             // We want to preserve the ID when updating
-            updatedGroup.setId(federationId);
+            updatedGroup.setId(groupId);
             
             // For subgroups, preserve the existing ones if not specified in the update
             if (updatedGroup.getSubGroups() == null && currentGroup.getSubGroups() != null) {
@@ -511,196 +445,232 @@ public class KeycloakService {
             
             // Update the group
             groupResource.update(updatedGroup);
-            log.info("Updated federation with ID: {}", federationId);
+            log.info("Updated site with ID: {}", groupId);
             return true;
         } catch (Exception e) {
-            log.error("Error updating federation with ID: {}", federationId, e);
+            log.error("Error updating site with ID: {}", groupId, e);
             return false;
         }
     }
     
     /**
-     * Delete a federation
+     * Delete a site
+     * @param groupId
      */
-    public boolean deleteFederation(String federationId) {
+    public boolean deleteGroup(String groupId) {
         try {
-            // Check if the federation exists
-            GroupResource groupResource = getRealmResource().groups().group(federationId);
+            // Check if the site exists
+            GroupResource groupResource = getRealmResource().groups().group(groupId);
             GroupRepresentation group = groupResource.toRepresentation();
-            
+            String roleToRemove = getSiteAdminRoleName(group.getName());
+
             if (group != null) {
-                // Delete the federation
+                // Delete the site
                 groupResource.remove();
-                log.info("Deleted federation with ID: {}", federationId);
+                log.info("Deleted site with ID: {}", groupId);
+                getRealmResource().roles().deleteRole(roleToRemove);
+                log.info("Deleted role: {}", roleToRemove);
                 return true;
             } else {
-                log.warn("Federation with ID {} not found for deletion", federationId);
+                log.warn("Site with ID {} not found for deletion", groupId);
                 return false;
             }
         } catch (Exception e) {
-            log.error("Error deleting federation with ID: {}", federationId, e);
+            log.error("Error deleting site with ID: {}", groupId, e);
             return false;
         }
     }
 
     /**
-     * Check if a user is a member of a specific federation (group)
+     * Check if a user is a member of a specific site (group)
      */
-    public boolean isUserInFederation(String userId, String federationId) {
+    public boolean isUserInGroup(String userId, String groupId) {
         try {
             UserResource userResource = getRealmResource().users().get(userId);
             List<GroupRepresentation> userGroups = userResource.groups();
             
-            // Check if any of the user's groups matches the federation ID
+            // Check if any of the user's groups matches the site ID
             return userGroups.stream()
-                .anyMatch(group -> group.getId().equals(federationId));
+                .anyMatch(group -> group.getId().equals(groupId));
         } catch (Exception e) {
-            log.error("Error checking if user {} is in federation {}", userId, federationId, e);
+            log.error("Error checking if user {} is in group {}", userId, groupId, e);
             return false;
         }
     }
 
     /**
-     * Adds a user to a federation
+     * Adds a user to a site
      *
      * @param userId the user ID
-     * @param federationId the federation ID
-     * @return true if user was added to federation successfully, false otherwise
+     * @param groupId the site ID
+     * @return true if user was added to site successfully, false otherwise
      */
-    public boolean addUserToFederation(String userId, String federationId) {
+    public boolean addUserToKeycloakGroup(String userId, String groupId) {
         try {
-            // Check if user is already in the federation
-            if (isUserInFederation(userId, federationId)) {
-                log.info("User {} is already in federation {}", userId, federationId);
+            // Check if user is already in the site
+            if (isUserInGroup(userId, groupId)) {
+                log.info("User {} is already in site {}", userId, groupId);
                 return true;
             }
             
-            // Add user to federation group
+            // Add user to site group
             UserResource userResource = getRealmResource().users().get(userId);
-            userResource.joinGroup(federationId);
+            userResource.joinGroup(groupId);
             
-            log.info("Added user {} to federation {}", userId, federationId);
+            log.info("Added user {} to site {}", userId, groupId);
             return true;
         } catch (Exception e) {
-            log.error("Error adding user {} to federation {}", userId, federationId, e);
+            log.error("Error adding user {} to site {}", userId, groupId, e);
             return false;
         }
     }
-    
-    
+
+
+
     /**
-     * Make a user a federation admin
+     * Generates a standardized site admin role name
      */
-    public boolean makeFederationAdmin(String userId, String federationId) {
+    public String getSiteAdminRoleName(String siteName) {
+        return siteName.toLowerCase().replace(' ', '_') + "_site_admin";
+    }
+
+    /**
+     * Creates a site user role when a new site is created
+     */
+    public boolean createSiteAdminRole(String siteName) {
         try {
-            // First ensure the user is a member of the federation
-            if (!isUserInFederation(userId, federationId)) {
-                addUserToFederation(userId, federationId);
+            String roleName = getSiteAdminRoleName(siteName);
+
+            // Create the role if it doesn't exist
+            if (getRealmResource().roles().get(roleName).toRepresentation() == null) {
+                RoleRepresentation role = new RoleRepresentation();
+                role.setName(roleName);
+                role.setDescription("User role for site: " + siteName);
+                getRealmResource().roles().create(role);
+                log.info("Created site user role: {}", roleName);
             }
-            
-            // Then assign the FEDERATION_ADMIN role
-            List<String> currentRoles = getUserRoles(userId);
-            if (!currentRoles.contains("FEDERATION_ADMIN")) {
-                assignRoleToUser(userId, "FEDERATION_ADMIN");
-            }
-            
-            // Store the federation admin relationship in user attributes
-            UserResource userResource = getRealmResource().users().get(userId);
-            UserRepresentation user = userResource.toRepresentation();
-            
-            Map<String, List<String>> attributes = user.getAttributes();
-            if (attributes == null) {
-                attributes = new HashMap<>();
-            }
-            
-            // Get or create admin_federations attribute
-            String ADMIN_FEDERATIONS_ATTR = "admin_federations";
-            List<String> adminFederations = attributes.containsKey(ADMIN_FEDERATIONS_ATTR) 
-                ? new ArrayList<>(attributes.get(ADMIN_FEDERATIONS_ATTR)) 
-                : new ArrayList<>();
-            
-            // Add this federation if not already present
-            if (!adminFederations.contains(federationId)) {
-                adminFederations.add(federationId);
-                attributes.put(ADMIN_FEDERATIONS_ATTR, adminFederations);
-                user.setAttributes(attributes);
-                userResource.update(user);
-            }
-            
-            log.info("User {} made admin of federation {}", userId, federationId);
             return true;
         } catch (Exception e) {
-            log.error("Error making user {} admin of federation {}", userId, federationId, e);
+            log.error("Error creating site user role: {}", e.getMessage(), e);
             return false;
         }
     }
-    
+
     /**
-     * Remove federation admin status from a user
+     * Assigns the site admin role to a user
      */
-    public boolean removeFederationAdmin(String userId, String federationId) {
+    public boolean assignSiteAdminRole(String userId, String siteName) {
         try {
-            UserResource userResource = getRealmResource().users().get(userId);
-            UserRepresentation user = userResource.toRepresentation();
-            
-            Map<String, List<String>> attributes = user.getAttributes();
-            if (attributes == null || !attributes.containsKey("admin_federations")) {
-                return true; // Not an admin, so removal successful
-            }
-            
-            // Remove this federation from admin federations
-            String ADMIN_FEDERATIONS_ATTR = "admin_federations";
-            List<String> adminFederations = new ArrayList<>(attributes.get(ADMIN_FEDERATIONS_ATTR));
-            adminFederations.remove(federationId);
-            
-            attributes.put(ADMIN_FEDERATIONS_ATTR, adminFederations);
-            user.setAttributes(attributes);
-            userResource.update(user);
-            
-            // If no longer admin of any federation, remove the FEDERATION_ADMIN role
-            if (adminFederations.isEmpty() && !hasGlobalAdminRole(userId)) {
-                RoleRepresentation federationAdminRole = getRealmResource().roles()
-                        .get("FEDERATION_ADMIN").toRepresentation();
-                userResource.roles().realmLevel().remove(Collections.singletonList(federationAdminRole));
-            }
-            
-            log.info("Removed admin status for user {} from federation {}", userId, federationId);
-            return true;
+            // First ensure the role exists
+            createSiteAdminRole(siteName);
+
+            // Then assign it to the user
+            String roleName = getSiteAdminRoleName(siteName);
+            return assignRoleToUser(userId, roleName);
         } catch (Exception e) {
-            log.error("Error removing admin status for user {} from federation {}", userId, federationId, e);
+            log.error("Error assigning site role to user {}: {}", userId, e.getMessage(), e);
             return false;
         }
     }
-    
+
+    private String getGroupNameById(String groupId) {
+        return getRealmResource().groups().group(groupId).toRepresentation().getName();
+    }
+
     /**
-     * Get federations where user is an admin
+     * Removes the site admin role from a user
      */
-    public List<String> getUserAdminFederations(String userId) {
-        try {
-            UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
-            Map<String, List<String>> attributes = user.getAttributes();
-            
-            if (attributes != null && attributes.containsKey("admin_federations")) {
-                return new ArrayList<>(attributes.get("admin_federations"));
-            }
-            
-            return new ArrayList<>();
-        } catch (Exception e) {
-            log.error("Error getting admin federations for user {}", userId, e);
-            return new ArrayList<>();
+    public void removeSiteAdminRole(String userId, String siteId, String requesterUserId) throws AccessDeniedException {
+        if (!hasGlobalAdminRole(requesterUserId) &&
+                !isUserSiteAdmin(requesterUserId, siteId)) {
+            throw new AccessDeniedException("User can't remove site admin role in this site");
+        }
+
+        String roleName = getSiteAdminRoleName(getGroupNameById(siteId));
+
+        UserResource userResource = getRealmResource().users().get(userId);
+        RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
+
+        if (Objects.nonNull(role)) {
+            userResource.roles().realmLevel().remove(Collections.singletonList(role));
+            log.info("Removed site admin role {} from user {}", roleName, userId);
+        } else {
+            throw new RuntimeException("Error removing site admin role, please try again");
         }
     }
-    
+
     /**
-     * Check if user is an admin of a specific federation
+     * Checks if a user is an admin of a site
      */
-    public boolean isUserFederationAdmin(String userId, String federationId) {
-        // Global admins are implicitly federation admins
+    public boolean isUserSiteAdmin(String userId, String siteId) {
+        // Global admins are implicitly site admins
         if (hasGlobalAdminRole(userId)) {
             return true;
         }
-        
-        return getUserAdminFederations(userId).contains(federationId);
+
+        try {
+            // Get the site name for the site ID
+            Optional<GroupRepresentation> site = getGroupById(siteId);
+            if (site.isEmpty()) {
+                return false;
+            }
+
+            // Check if user has the site admin role
+            String roleName = getSiteAdminRoleName(site.get().getName());
+            List<String> userRoles = getUserRoles(userId);
+            return userRoles.contains(roleName);
+        } catch (Exception e) {
+            log.error("Error checking if user is site admin: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Make a user a site admin
+     */
+    public boolean makeSiteAdmin(String userId, String siteId, String requesterUserId) throws AccessDeniedException {
+        if (!hasGlobalAdminRole(requesterUserId) &&
+                !isUserSiteAdmin(requesterUserId, siteId)) {
+            throw new AccessDeniedException("User can't add new users to this site");
+        }
+
+        try {
+
+            // First ensure the user is a member of the site
+            if (!isUserInGroup(userId, siteId)) {
+                addUserToKeycloakGroup(userId, siteId);
+            }
+
+            // Get the site name
+            Optional<GroupRepresentation> site = getGroupById(siteId);
+            if (site.isEmpty()) {
+                return false;
+            }
+
+            // Assign the site admin role
+            return assignSiteAdminRole(userId, site.get().getName());
+        } catch (Exception e) {
+            log.error("Error making user {} admin of site {}: {}", userId, siteId, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Get sites where user is an admin
+     */
+    public List<String> getUserAdminGroups(String userId) {
+        try {
+            UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
+            List<String> groups = user.getGroups();
+
+            return groups.stream()
+                    .filter(groupName -> groupName.startsWith("site_") && groupName.endsWith("_admin"))
+                    .map(gropName -> gropName.split("_")[1])
+                    .toList();
+        } catch (Exception e) {
+            log.error("Error getting admin sites for user {}", userId, e);
+            return new ArrayList<>();
+        }
     }
 
     /**
@@ -719,7 +689,7 @@ public class KeycloakService {
     /**
      * Assign a role to a user
      */
-    public boolean assignRoleToUser(String userId, String roleName) {
+    private boolean assignRoleToUser(String userId, String roleName) {
         try {
             UserResource userResource = getRealmResource().users().get(userId);
             RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
@@ -734,62 +704,61 @@ public class KeycloakService {
     }
 
     /**
-     * Get users who are members of a specific federation (group)
+     * Get users who are members of a specific site (group)
+     * @param groupId
      */
-    public List<UserRepresentation> getUsersInFederation(String federationId) {
+    public List<UserRepresentation> getUsersInGroup(String groupId) {
         try {
-            // Get the federation (group) resource
-            GroupResource groupResource = getRealmResource().groups().group(federationId);
+            // Get the site (group) resource
+            GroupResource groupResource = getRealmResource().groups().group(groupId);
             
             // Fetch all members of the group
-            // Note: The first parameter is 'first' (starting index), the second is 'max' (maximum results)
-            // Using 0 and Integer.MAX_VALUE to get all members without pagination
             List<UserRepresentation> members = groupResource.members();
             
-            log.debug("Found {} users in federation {}", members.size(), federationId);
+            log.debug("Found {} users in site {}", members.size(), groupId);
             return members;
         } catch (Exception e) {
-            log.error("Error getting users in federation {}", federationId, e);
+            log.error("Error getting users in site {}", groupId, e);
             return Collections.emptyList();
         }
     }
 
     /**
-     * Remove a user from a federation (group)
+     * Remove a user from a site (group)
      */
-    public boolean removeUserFromFederation(String userId, String federationId) {
+    public boolean removeUserFromSite(String userId, String siteId) {
         try {
-            // Check if user is actually in the federation
-            if (!isUserInFederation(userId, federationId)) {
-                log.info("User {} is not in federation {}, nothing to remove", userId, federationId);
+            // Check if user is actually in the site
+            if (!isUserInGroup(userId, siteId)) {
+                log.info("User {} is not in site {}, nothing to remove", userId, siteId);
                 return true; // Not an error since the end state is what was desired
             }
-            
+
             // Get the user resource
             UserResource userResource = getRealmResource().users().get(userId);
             
             // Remove the user from the group
-            userResource.leaveGroup(federationId);
+            userResource.leaveGroup(siteId);
             
             // Verify removal was successful
-            boolean stillInFederation = isUserInFederation(userId, federationId);
-            if (stillInFederation) {
-                log.warn("Failed to remove user {} from federation {} - user is still a member", userId, federationId);
+            boolean stillInSite = isUserInGroup(userId, siteId);
+            if (stillInSite) {
+                log.warn("Failed to remove user {} from site {} - user is still a member", userId, siteId);
                 return false;
             }
             
-            log.info("Successfully removed user {} from federation {}", userId, federationId);
+            log.info("Successfully removed user {} from site {}", userId, siteId);
             return true;
         } catch (Exception e) {
-            log.error("Error removing user {} from federation {}: {}", userId, federationId, e.getMessage(), e);
+            log.error("Error removing user {} from site {}: {}", userId, siteId, e.getMessage(), e);
             return false;
         }
     }
 
     /**
-     * Get all federations (groups) a user belongs to
+     * Get all sites ids (groups) a user belongs to
      */
-    public List<String> getUserFederations(String userId) {
+    public List<String> getUserSites(String userId) {
         try {
             // Get the user resource
             UserResource userResource = getRealmResource().users().get(userId);
@@ -797,23 +766,23 @@ public class KeycloakService {
             // Get all groups the user belongs to
             List<GroupRepresentation> userGroups = userResource.groups();
             
-            // Extract the federation IDs (group IDs)
-            List<String> federationIds = userGroups.stream()
+            // Extract the site IDs (group IDs)
+            List<String> siteIds = userGroups.stream()
                 .map(GroupRepresentation::getId)
                 .collect(Collectors.toList());
             
-            log.debug("User {} belongs to {} federations", userId, federationIds.size());
-            return federationIds;
+            log.debug("User {} belongs to {} sites", userId, siteIds.size());
+            return siteIds;
         } catch (Exception e) {
-            log.error("Error retrieving federations for user {}: {}", userId, e.getMessage(), e);
+            log.error("Error retrieving sites for user {}: {}", userId, e.getMessage(), e);
             return Collections.emptyList();
         }
     }
 
     /**
-     * Get all federations a user belongs to as GroupRepresentations
+     * Get all sites a user belongs to as GroupRepresentations
      */
-    public List<GroupRepresentation> getUserFederationGroups(String userId) {
+    public List<GroupRepresentation> getUserGroups(String userId) {
         try {
             // Get the user resource
             UserResource userResource = getRealmResource().users().get(userId);
@@ -821,29 +790,10 @@ public class KeycloakService {
             // Get all groups the user belongs to
             List<GroupRepresentation> userGroups = userResource.groups();
             
-            log.debug("User {} belongs to {} federation groups", userId, userGroups.size());
+            log.debug("User {} belongs to {} site groups", userId, userGroups.size());
             return userGroups;
         } catch (Exception e) {
-            log.error("Error retrieving federation groups for user {}: {}", userId, e.getMessage(), e);
-            return Collections.emptyList();
-        }
-    }
-
-    /**
-     * Get all federations a user belongs to as FederationDTOs
-     * (This would use the FederationMapper, so we'd need to inject that dependency)
-     */
-    public List<FederationDTO> getUserFederationDTOs(String userId) {
-        try {
-            List<GroupRepresentation> federationGroups = getUserFederationGroups(userId);
-            
-            // Here you would use the federationMapper to convert these to DTOs
-            // This is just a placeholder for structure
-            return federationGroups.stream()
-                .map(federationMapper::toDto)
-                .collect(Collectors.toList());
-        } catch (Exception e) {
-            log.error("Error retrieving federation DTOs for user {}: {}", userId, e.getMessage(), e);
+            log.error("Error retrieving site groups for user {}: {}", userId, e.getMessage(), e);
             return Collections.emptyList();
         }
     }
@@ -952,36 +902,21 @@ public class KeycloakService {
     }
 
     /**
-     * Assigns roles to a user
+     * Assigns roles to a user, all site_<site_name>_user will be assigned by default
      *
      * @param userId the user ID
-     * @param roles the roles to assign
      * @return true if roles were assigned successfully, false otherwise
      */
-    private boolean assignRolesToUser(String userId, Set<String> roles) {
-        try {
-            log.debug("Attempting to assign roles: {} to user: {}", roles, userId);
-            List<RoleRepresentation> realmRoles = new ArrayList<>();
+    private boolean assignRolesToUser(String userId) {
+        try { //TODO: Assign user roles based on available groups
+            log.debug("Attempting to assign roles to user: {}", userId);
+            List<RoleRepresentation> realmRoles = getRealmResource().roles().list().stream().filter(role -> role.getName().startsWith("site_")
+                    && role.getName().endsWith("_user")).toList();
 
-            for (String roleName : roles) {
-                roleName = roleName.toLowerCase();
-                RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
-                if (role != null) {
-                    realmRoles.add(role);
-                    log.debug("Role found and added: {}", roleName);
-                } else {
-                    log.warn("Role not found: {}", roleName);
-                }
-            }
+            getRealmResource().users().get(userId).roles().realmLevel().add(realmRoles);
+            log.debug("Roles successfully assigned to user: {} - Roles: {}", userId, realmRoles);
+            return true;
 
-            if (!realmRoles.isEmpty()) {
-                getRealmResource().users().get(userId).roles().realmLevel().add(realmRoles);
-                log.debug("Roles successfully assigned to user: {}", userId);
-                return true;
-            } else {
-                log.warn("No valid roles found to assign to user: {}", userId);
-                return false;
-            }
         } catch (Exception e) {
             log.error("Error assigning roles to user: {}", userId, e);
             return false;

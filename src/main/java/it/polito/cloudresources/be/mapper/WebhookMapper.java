@@ -1,16 +1,20 @@
 package it.polito.cloudresources.be.mapper;
 
-import it.polito.cloudresources.be.dto.FederationDTO;
+import it.polito.cloudresources.be.dto.SiteDTO;
 import it.polito.cloudresources.be.dto.webhooks.WebhookConfigDTO;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.model.WebhookConfig;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
-import it.polito.cloudresources.be.service.FederationService;
+import it.polito.cloudresources.be.service.KeycloakService;
+import it.polito.cloudresources.be.service.SiteService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.keycloak.representations.idm.GroupRepresentation;
 import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 /**
  * Mapper for converting between WebhookConfig entity and DTO
@@ -21,7 +25,8 @@ public class WebhookMapper {
 
     private final ResourceRepository resourceRepository;
     private final ResourceTypeRepository resourceTypeRepository;
-    private final FederationService federationService;
+    private final SiteService siteService;
+    private final KeycloakService keycloakService;
     
     /**
      * Convert from DTO to entity
@@ -55,7 +60,7 @@ public class WebhookMapper {
             entity.setResourceType(resourceType);
         }
 
-        entity.setFederationId(dto.getFederationId());
+        entity.setSiteId(dto.getSiteId());
         
         return entity;
     }
@@ -90,10 +95,15 @@ public class WebhookMapper {
             dto.setResourceTypeName(entity.getResourceType().getName());
         }
 
-        FederationDTO federation = federationService.getFederationById(entity.getFederationId());
-        dto.setFederationId(entity.getFederationId());
-        dto.setFederationName(federation.getName());
-        
+
+        Optional<GroupRepresentation> groupRepresentation = keycloakService.getGroupById(entity.getSiteId());
+        if(groupRepresentation.isPresent()) {
+            dto.setSiteId(entity.getSiteId());
+            dto.setSiteName(groupRepresentation.get().getName());
+        } else {
+            throw new RuntimeException("No group found");
+        }
+
         
         return dto;
     }

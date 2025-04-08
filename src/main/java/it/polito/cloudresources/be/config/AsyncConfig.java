@@ -22,7 +22,7 @@ public class AsyncConfig {
         executor.setCorePoolSize(5);
         executor.setMaxPoolSize(10);
         executor.setQueueCapacity(25);
-        executor.setThreadNamePrefix("AuditLog-");
+        executor.setThreadNamePrefix("AsyncThread-");
         executor.initialize();
 
         return new DelegatingSecurityContextAsyncTaskExecutor(executor);

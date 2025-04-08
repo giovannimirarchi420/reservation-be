@@ -58,7 +58,7 @@ public class AuditLogService {
                 .action(action)
                 .details(details)
                 .username(jwtAuth.getToken().getClaimAsString("preferred_username"))
-                .federationName(jwtAuth.getToken().getClaimAsString("group"))
+                .siteName(jwtAuth.getToken().getClaimAsString("group"))
                 .entityId(entityId)
                 .severity(severity);
 

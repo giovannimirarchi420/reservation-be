@@ -183,17 +183,17 @@ public class WebhookService {
         if (keycloakService.hasGlobalAdminRole(userId)) {
             webhooks = webhookConfigRepository.findAll();
         } else {
-            // Get federations where the user is an admin
-            List<String> adminFederations = keycloakService.getUserAdminFederations(userId);
+            // Get sites where the user is an admin
+            List<String> adminSites = keycloakService.getUserAdminGroups(userId);
             
-            // Get webhooks for resources in these federations
-            List<WebhookConfig> resourceWebhooks = adminFederations.stream()
-                    .flatMap(fedId -> webhookConfigRepository.findByResourceFederationIdAndEnabled(fedId, true).stream())
+            // Get webhooks for resources in these sites
+            List<WebhookConfig> resourceWebhooks = adminSites.stream()
+                    .flatMap(siteId -> webhookConfigRepository.findByResourceSiteIdAndEnabled(siteId, true).stream())
                     .toList();
                     
-            // Get webhooks for resource types in these federations
-            List<WebhookConfig> resourceTypeWebhooks = adminFederations.stream()
-                    .flatMap(fedId -> webhookConfigRepository.findByResourceTypeFederationIdAndEnabled(fedId, true).stream())
+            // Get webhooks for resource types in these sites
+            List<WebhookConfig> resourceTypeWebhooks = adminSites.stream()
+                    .flatMap(siteId -> webhookConfigRepository.findByResourceTypeSiteIdAndEnabled(siteId, true).stream())
                     .toList();
                     
             // Combine all results
@@ -253,25 +253,25 @@ public class WebhookService {
             }
         }
         
-        // Federation admins can only see logs for webhooks in their federations
-        List<String> adminFederations = keycloakService.getUserAdminFederations(userId);
+        // Site admins can only see logs for webhooks in their sites
+        List<String> adminSites = keycloakService.getUserAdminGroups(userId);
         
-        if (adminFederations.isEmpty()) {
-            // User is not admin of any federation, return empty page
+        if (adminSites.isEmpty()) {
+            // User is not admin of any site, return empty page
             return Page.empty(pageRequest);
         }
         
-        // Get all webhooks in the federations where the user is an admin
+        // Get all webhooks in the sites where the user is an admin
         List<WebhookConfig> accessibleWebhooks = new ArrayList<>();
         
-        for (String federationId : adminFederations) {
-            // Get webhooks for resources in this federation
+        for (String siteId : adminSites) {
+            // Get webhooks for resources in this site
             accessibleWebhooks.addAll(
-                    webhookConfigRepository.findByResourceFederationIdAndEnabled(federationId, true));
+                    webhookConfigRepository.findByResourceSiteIdAndEnabled(siteId, true));
             
-            // Get webhooks for resource types in this federation
+            // Get webhooks for resource types in this site
             accessibleWebhooks.addAll(
-                    webhookConfigRepository.findByResourceTypeFederationIdAndEnabled(federationId, true));
+                    webhookConfigRepository.findByResourceTypeSiteIdAndEnabled(siteId, true));
         }
         
         // If no accessible webhooks, return empty page
@@ -499,7 +499,7 @@ public class WebhookService {
     /**
      * Schedule a retry for a failed webhook log
      * 
-     * @param log The webhook log
+     * @param webhookLog The webhook log
      */
     private void scheduleRetry(WebhookLog webhookLog) {
         if (webhookLog.getRetryCount() >= webhookLog.getWebhook().getMaxRetries()) {
@@ -597,8 +597,8 @@ public class WebhookService {
             return true;
         }
         
-        // Federation admins can manage webhooks for resources in their federations
-        return keycloakService.isUserFederationAdmin(userId, resource.getFederationId());
+        // Site admins can manage webhooks for resources in their sites
+        return keycloakService.isUserSiteAdmin(userId, resource.getSiteId());
     }
     
     /**
@@ -610,14 +610,14 @@ public class WebhookService {
             return true;
         }
         
-        // Get the federation ID from the webhook
-        String federationId = webhook.getFederationId();
-        if (federationId == null) {
+        // Get the site ID from the webhook
+        String siteId = webhook.getSiteId();
+        if (siteId == null) {
             return false;
         }
         
-        // Check if user is admin of the federation
-        return keycloakService.isUserFederationAdmin(userId, federationId);
+        // Check if user is admin of the site
+        return keycloakService.isUserSiteAdmin(userId, siteId);
     }
     
     /**

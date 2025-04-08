@@ -34,7 +34,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(name = "Webhooks", description = "API for managing webhooks")
 @SecurityRequirement(name = "bearer-auth")
-@PreAuthorize("hasRole('FEDERATION_ADMIN')")
+
 public class WebhookController {
 
     private final WebhookService webhookService;

@@ -31,16 +31,16 @@ public interface WebhookConfigRepository extends JpaRepository<WebhookConfig, Lo
     List<WebhookConfig> findByResourceTypeIdAndEnabled(Long resourceTypeId, boolean enabled);
     
     /**
-     * Find webhooks for resources in a federation
+     * Find webhooks for resources in a site
      */
-    @Query("SELECT w FROM WebhookConfig w JOIN w.resource r WHERE r.federationId = :federationId AND w.enabled = :enabled")
-    List<WebhookConfig> findByResourceFederationIdAndEnabled(@Param("federationId") String federationId, @Param("enabled") boolean enabled);
+    @Query("SELECT w FROM WebhookConfig w JOIN w.resource r WHERE r.siteId = :siteId AND w.enabled = :enabled")
+    List<WebhookConfig> findByResourceSiteIdAndEnabled(@Param("siteId") String siteId, @Param("enabled") boolean enabled);
     
     /**
-     * Find webhooks for resource types in a federation
+     * Find webhooks for resource types in a site
      */
-    @Query("SELECT w FROM WebhookConfig w JOIN w.resourceType rt WHERE rt.federationId = :federationId AND w.enabled = :enabled")
-    List<WebhookConfig> findByResourceTypeFederationIdAndEnabled(@Param("federationId") String federationId, @Param("enabled") boolean enabled);
+    @Query("SELECT w FROM WebhookConfig w JOIN w.resourceType rt WHERE rt.siteId = :siteId AND w.enabled = :enabled")
+    List<WebhookConfig> findByResourceTypeSiteIdAndEnabled(@Param("siteId") String siteId, @Param("enabled") boolean enabled);
     
     /**
      * Find webhooks by IDs
@@ -59,7 +59,7 @@ public interface WebhookConfigRepository extends JpaRepository<WebhookConfig, Lo
         "(w.resource.id = :resourceId) OR " + 
         "(w.resource.id IN (SELECT p.id FROM Resource r JOIN r.parent p WHERE r.id = :resourceId) AND w.includeSubResources = true) OR " +
         "(w.resourceType.id = (SELECT r.type.id FROM Resource r WHERE r.id = :resourceId)) OR " +
-        "(w.federationId = (SELECT r.federationId FROM Resource r WHERE r.id = :resourceId) AND w.resource IS NULL AND w.resourceType IS NULL)" +
+        "(w.siteId = (SELECT r.siteId FROM Resource r WHERE r.id = :resourceId) AND w.resource IS NULL AND w.resourceType IS NULL)" +
     ") AND " +
     "(w.eventType = :eventType OR w.eventType = 'ALL')")
     List<WebhookConfig> findRelevantWebhooksForResourceEvent(

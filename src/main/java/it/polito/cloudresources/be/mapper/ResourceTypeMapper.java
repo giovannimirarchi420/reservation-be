@@ -20,7 +20,7 @@ public class ResourceTypeMapper implements EntityMapper<ResourceTypeDTO, Resourc
         resourceType.setId(dto.getId());
         resourceType.setName(dto.getName());
         resourceType.setColor(dto.getColor());
-        resourceType.setFederationId(dto.getFederationId());
+        resourceType.setSiteId(dto.getSiteId());
         
         return resourceType;
     }
@@ -35,7 +35,7 @@ public class ResourceTypeMapper implements EntityMapper<ResourceTypeDTO, Resourc
         dto.setId(entity.getId());
         dto.setName(entity.getName());
         dto.setColor(entity.getColor());
-        dto.setFederationId(entity.getFederationId());
+        dto.setSiteId(entity.getSiteId());
         
         return dto;
     }

@@ -41,25 +41,20 @@ public class EventController {
      * Get all events
      */
     @GetMapping
-    @Operation(summary = "Get all events", description = "Retrieves all events with optional filtering based on user's federation access")
+    @Operation(summary = "Get all events", description = "Retrieves all events with optional filtering based on user's site access")
     public ResponseEntity<List<EventDTO>> getAllEvents(
             @RequestParam(required = false) Long resourceId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime endDate,
-            @RequestParam(required = false) String federationId,
+            @RequestParam(required = false) String siteId,
             Authentication authentication) {
 
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
         List<EventDTO> events;
         
         try {
-            if (federationId != null) {
-                // Check if user has access to this federation
-                if (!keycloakService.isUserInFederation(currentUserKeycloakId, federationId) && 
-                    !keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
-                    return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-                }
-                events = eventService.getEventsByFederation(federationId, currentUserKeycloakId);
+            if (siteId != null) {
+                events = eventService.getEventsBySite(siteId, currentUserKeycloakId);
             } else if (resourceId != null) {
                 events = eventService.getEventsByResource(resourceId, currentUserKeycloakId);
             } else if (startDate != null && endDate != null) {
@@ -71,6 +66,8 @@ public class EventController {
             return ResponseEntity.ok(events);
         } catch (AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
     }
 
@@ -94,11 +91,11 @@ public class EventController {
         String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
 
         try {
-            return eventService.getEventById(id, currentUserKeycloakId)
-                    .map(ResponseEntity::ok)
-                    .orElse(ResponseEntity.notFound().build());
+            return ResponseEntity.ok(eventService.getEventById(id, currentUserKeycloakId));
         } catch (AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
     }
 
@@ -106,7 +103,7 @@ public class EventController {
      * Create new event
      */
     @PostMapping
-    @Operation(summary = "Create event", description = "Creates a new booking event for resources in user's federation")
+    @Operation(summary = "Create event", description = "Creates a new booking event for resources in user's site")
     public ResponseEntity<Object> createEvent(
             @Valid @RequestBody EventDTO eventDTO, 
             Authentication authentication) {

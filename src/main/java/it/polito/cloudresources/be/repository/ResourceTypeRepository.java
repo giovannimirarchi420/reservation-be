@@ -17,7 +17,7 @@ public interface ResourceTypeRepository extends JpaRepository<ResourceType, Long
      */
     Boolean existsByName(String name);
 
-    List<ResourceType> findByFederationId(String federationId);
+    List<ResourceType> findBySiteId(String siteId);
     
-    List<ResourceType> findByFederationIdIn(List<String> federationIds);
+    List<ResourceType> findBySiteIdIn(List<String> siteIds);
 }

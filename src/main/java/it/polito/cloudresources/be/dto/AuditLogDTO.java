@@ -20,7 +20,7 @@ public class AuditLogDTO {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX")
     private ZonedDateTime timestamp;
     private String username;
-    private String federationName;
+    private String siteName;
     private AuditLog.LogType logType;
     private String entityType;
     private AuditLog.LogAction action;

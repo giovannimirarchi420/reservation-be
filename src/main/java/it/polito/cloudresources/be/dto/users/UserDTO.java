@@ -43,8 +43,8 @@ public class UserDTO {
 
     private Set<String> roles;
 
-    @NotBlank(message = "A federation must be provided")
-    private String federationId;
+    @NotBlank(message = "A site must be provided")
+    private String siteId;
 
     /**
      * Returns the user's full name by concatenating first and last name
@@ -137,6 +137,6 @@ public class UserDTO {
                 .avatar(user.getAvatar())
                 .sshPublicKey(user.getSshPublicKey())
                 .roles(user.getRoles() != null ? new HashSet<>(user.getRoles()) : null)
-                .federationId(user.getFederationId());
+                .siteId(user.getSiteId());
     }
 }

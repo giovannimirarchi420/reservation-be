@@ -9,22 +9,27 @@ import it.polito.cloudresources.be.dto.users.SshKeyDTO;
 import it.polito.cloudresources.be.dto.users.UpdateProfileDTO;
 import it.polito.cloudresources.be.dto.users.UpdateUserDTO;
 import it.polito.cloudresources.be.dto.users.UserDTO;
-import it.polito.cloudresources.be.service.FederationService;
+import it.polito.cloudresources.be.service.SiteService;
 import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.UserService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import it.polito.cloudresources.be.util.SshKeyValidator;
 
+import jakarta.persistence.EntityExistsException;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+import org.apache.http.protocol.HTTP;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.lang.invoke.StringConcatException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -40,58 +45,34 @@ import java.util.Optional;
 public class UserController {
 
     private final UserService userService;
-    private final FederationService federationService;
+    private final SiteService siteService;
     private final KeycloakService keycloakService;
     private final ControllerUtils utils;
     private final SshKeyValidator sshKeyValidator;
 
     /**
-     * Get all users with optional federation filtering
+     * Get all users with optional site filtering
      *
-     * @param federationId Optional federation ID to filter by
+     * @param siteId Optional site ID to filter by
      * @param authentication User authentication object
      * @return List of users based on access permissions
      */
     @GetMapping
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
-    @Operation(summary = "Get all users", description = "Retrieves all users with optional federation filtering")
+    @Operation(summary = "Get all users", description = "Retrieves all users with optional site filtering")
     public ResponseEntity<List<UserDTO>> getAllUsers(
-            @RequestParam(required = false) String federationId,
+            @RequestParam(required = false) String siteId,
             Authentication authentication) {
 
-        String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
-
-        // If federationId is provided, check access and filter accordingly
-        if (federationId != null) {
-            // Check if user has access to this federation
-            if (!keycloakService.isUserInFederation(currentUserKeycloakId, federationId) &&
-                    !keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        try {
+            String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+            if (siteId != null) {
+                return ResponseEntity.ok(siteService.getUsersInSite(siteId, currentUserKeycloakId));
             }
-
-            // Return users for this federation only
-            return ResponseEntity.ok(federationService.getUsersInFederation(federationId));
-        }
-
-        // Default behavior: global admins see all, federation admins see their federation users
-        if (keycloakService.hasGlobalAdminRole(currentUserKeycloakId)) {
-            return ResponseEntity.ok(userService.getAllUsers());
-        } else {
-            // Get all federations where user is an admin
-            List<String> adminFederations = keycloakService.getUserAdminFederations(currentUserKeycloakId);
-
-            // If user is not an admin of any federation, return empty list
-            if (adminFederations.isEmpty()) {
-                return ResponseEntity.ok(new ArrayList<>());
-            }
-
-            // Collect users from all federations where user is an admin
-            List<UserDTO> users = new ArrayList<>();
-            for (String fedId : adminFederations) {
-                users.addAll(federationService.getUsersInFederation(fedId));
-            }
-
-            return ResponseEntity.ok(users);
+            return ResponseEntity.ok(userService.getAllUsers(currentUserKeycloakId));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
@@ -102,12 +83,16 @@ public class UserController {
      * @return The requested user or 404 if not found
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Get user by ID", description = "Retrieves a specific user by their ID (Admin only)")
-    public ResponseEntity<UserDTO> getUserById(@PathVariable String id) {
-        return userService.getUserById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<UserDTO> getUserById(@PathVariable String id, Authentication authentication) {
+        try {
+            String currentKeycloakUserId = utils.getCurrentUserKeycloakId(authentication);
+            return ResponseEntity.ok(userService.getUserById(id, currentKeycloakUserId));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     /**
@@ -119,10 +104,16 @@ public class UserController {
     @GetMapping("/me")
     @Operation(summary = "Get current user", description = "Retrieves the profile of the currently authenticated user")
     public ResponseEntity<UserDTO> getCurrentUser(Authentication authentication) {
-        String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-        return userService.getUserById(keycloakId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        try {
+            String keycloakId = utils.getCurrentUserKeycloakId(authentication);
+            return ResponseEntity.ok(userService.getUserById(keycloakId, keycloakId));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     /**
@@ -132,49 +123,19 @@ public class UserController {
      * @return The created user or error response
      */
     @PostMapping
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Create user", description = "Creates a new user (Admin only)")
-    public ResponseEntity<Object> createUser(@Valid @RequestBody CreateUserDTO createUserDTO) {
+    public ResponseEntity<Object> createUser(@Valid @RequestBody CreateUserDTO createUserDTO, Authentication authentication) {
         try {
-            // Check if username already exists
-            if (userService.getUserByUsername(createUserDTO.getUsername()).isPresent()) {
-                return utils.createErrorResponse(
-                        HttpStatus.CONFLICT,
-                        "Username already exists: " + createUserDTO.getUsername()
-                );
-            }
-
-            // Check if email already exists
-            if (userService.getUserByEmail(createUserDTO.getEmail()).isPresent()) {
-                return utils.createErrorResponse(
-                        HttpStatus.CONFLICT,
-                        "Email already exists: " + createUserDTO.getEmail()
-                );
-            }
-
-            // Build the user DTO using UserDTO's built-in builder
-            UserDTO userDTO = UserDTO.builder()
-                    .username(createUserDTO.getUsername())
-                    .email(createUserDTO.getEmail())
-                    .firstName(createUserDTO.getFirstName())
-                    .lastName(createUserDTO.getLastName())
-                    .avatar(createUserDTO.getAvatar())
-                    .sshPublicKey(createUserDTO.getSshPublicKey())
-                    .roles(createUserDTO.getRoles())
-                    .federationId(createUserDTO.getFederationId())
-                    .withGeneratedAvatarIfEmpty()
-                    .withNormalizedEmail()
-                    .withUppercaseRoles()
-                    .build();
-
-            // Create user
-            UserDTO createdUser = userService.createUser(userDTO, createUserDTO.getPassword());
+            String currentKeycloakUserId = utils.getCurrentUserKeycloakId(authentication);
+            UserDTO createdUser = userService.createUser(createUserDTO, createUserDTO.getPassword(), currentKeycloakUserId);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
+        } catch (AccessDeniedException e) {
+            return utils.createErrorResponse(HttpStatus.FORBIDDEN, "User does not have privileges");
         } catch (IllegalArgumentException e) {
-            // Handle validation errors
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Invalid input: " + e.getMessage());
+        } catch (EntityExistsException e) {
+            return utils.createErrorResponse(HttpStatus.CONFLICT, "Username or Email already used");
         } catch (Exception e) {
-            // Log the detailed error for debugging
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to create user: " + e.getMessage());
         }
     }
@@ -187,35 +148,17 @@ public class UserController {
      * @return The updated user or error response
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Update user", description = "Updates an existing user (Admin only)")
     public ResponseEntity<Object> updateUser(
             @PathVariable String id,
-            @Valid @RequestBody UpdateUserDTO updateUserDTO) {
+            @Valid @RequestBody UpdateUserDTO updateUserDTO,
+            Authentication authentication) {
         try {
-            Optional<UserDTO> existingUserOpt = userService.getUserById(id);
-            if (existingUserOpt.isEmpty()) {
-                return ResponseEntity.notFound().build();
-            }
-
-            UserDTO existingUser = existingUserOpt.get();
-
-            // Build updated user using the from() method and builder
-            UserDTO updatedUserDTO = UserDTO.from(existingUser)
-                    .username(updateUserDTO.getUsername() != null ? updateUserDTO.getUsername() : existingUser.getUsername())
-                    .firstName(updateUserDTO.getFirstName() != null ? updateUserDTO.getFirstName() : existingUser.getFirstName())
-                    .lastName(updateUserDTO.getLastName() != null ? updateUserDTO.getLastName() : existingUser.getLastName())
-                    .email(updateUserDTO.getEmail() != null ? updateUserDTO.getEmail() : existingUser.getEmail())
-                    .avatar(updateUserDTO.getAvatar() != null ? updateUserDTO.getAvatar() : existingUser.getAvatar())
-                    .sshPublicKey(updateUserDTO.getSshPublicKey() != null ? updateUserDTO.getSshPublicKey() : existingUser.getSshPublicKey())
-                    .roles(updateUserDTO.getRoles() != null ? updateUserDTO.getRoles() : existingUser.getRoles())
-                    .withNormalizedEmail()
-                    .withUppercaseRoles()
-                    .build();
-
-
-            UserDTO updatedUser = userService.updateUser(id, updatedUserDTO, updateUserDTO.getPassword());
+            String currentKeycloakUserId = utils.getCurrentUserKeycloakId(authentication);
+            UserDTO updatedUser = userService.updateUser(id, updateUserDTO, currentKeycloakUserId);
             return ResponseEntity.ok(updatedUser);
+        } catch (AccessDeniedException e) {
+            return utils.createErrorResponse(HttpStatus.FORBIDDEN, e.getMessage());
         } catch (Exception e) {
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update user: " + e.getMessage());
         }
@@ -236,38 +179,12 @@ public class UserController {
             Authentication authentication) {
         try {
             String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-            Optional<UserDTO> existingUserOpt = userService.getUserById(keycloakId);
-
-            if (existingUserOpt.isEmpty()) {
-                return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
-            }
-
-            UserDTO existingUser = existingUserOpt.get();
-
-            // Validate SSH key if provided
-            String sshPublicKey = updateProfileDTO.getSshPublicKey();
-            if (sshPublicKey != null && !sshPublicKey.trim().isEmpty()) {
-                sshPublicKey = sshKeyValidator.formatSshKey(sshPublicKey);
-                if (!sshKeyValidator.isValidSshPublicKey(sshPublicKey)) {
-                    return utils.createErrorResponse(HttpStatus.BAD_REQUEST,
-                            "Invalid SSH public key format. Please provide a valid SSH key.");
-                }
-                updateProfileDTO.setSshPublicKey(sshPublicKey);
-            }
-
-            // Build updated user using the from() method and builder
-            UserDTO updatedUserDTO = UserDTO.from(existingUser)
-                    .firstName(updateProfileDTO.getFirstName() != null ? updateProfileDTO.getFirstName() : existingUser.getFirstName())
-                    .lastName(updateProfileDTO.getLastName() != null ? updateProfileDTO.getLastName() : existingUser.getLastName())
-                    .email(updateProfileDTO.getEmail() != null ? updateProfileDTO.getEmail() : existingUser.getEmail())
-                    .avatar(updateProfileDTO.getAvatar() != null ? updateProfileDTO.getAvatar() : existingUser.getAvatar())
-                    .sshPublicKey(updateProfileDTO.getSshPublicKey() != null ? updateProfileDTO.getSshPublicKey() : existingUser.getSshPublicKey())
-                    .withNormalizedEmail()
-                    .build();
-
-
-            UserDTO updatedUser = userService.updateUser(keycloakId, updatedUserDTO, null);
+            UserDTO updatedUser = userService.updateProfile(keycloakId, updateProfileDTO);
             return ResponseEntity.ok(updatedUser);
+        } catch (IllegalArgumentException e) {
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (EntityNotFoundException e) {
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
         } catch (Exception e) {
             return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update profile: " + e.getMessage());
         }
@@ -280,24 +197,17 @@ public class UserController {
      * @return Success response or error
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Delete user", description = "Deletes an existing user (Admin only)")
     public ResponseEntity<Object> deleteUser(@PathVariable String id, Authentication authentication) {
         try {
-            Optional<UserDTO> userOpt = userService.getUserById(id);
-            if (userOpt.isEmpty()) {
-                return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
-            }
-            
-            String currentKeycloakId = utils.getCurrentUserKeycloakId(authentication);
-            boolean deleted = userService.deleteUser(id, currentKeycloakId);
-            
-            if (!deleted) {
-                return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Failed to delete user");
-            }
+            String currentKeycloakUserId = utils.getCurrentUserKeycloakId(authentication);
+            userService.deleteUser(id, currentKeycloakUserId);
 
             return utils.createSuccessResponse("User deleted successfully");
+        } catch (AccessDeniedException e) {
+            return utils.createErrorResponse(HttpStatus.FORBIDDEN, e.getMessage());
+        } catch (EntityNotFoundException e) {
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, e.getMessage());
         } catch (Exception e) {
             return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to delete user: " + e.getMessage());
@@ -311,48 +221,16 @@ public class UserController {
      * @return List of users with the specified role
      */
     @GetMapping("/by-role/{role}")
-    @PreAuthorize("hasRole('FEDERATION_ADMIN')")
     @Operation(summary = "Get users by role", description = "Retrieves users with a specific role (Admin only)")
-    public ResponseEntity<List<UserDTO>> getUsersByRole(@PathVariable String role) {
-        List<UserDTO> users = userService.getUsersByRole(role.toUpperCase());
-        return ResponseEntity.ok(users);
-    }
-
-    /**
-     * Update current user's SSH key
-     *
-     * @param sshKeyDTO The SSH key data
-     * @param authentication User authentication object
-     * @return The updated user or error response
-     */
-    @PutMapping("/me/ssh-key")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Update SSH key", description = "Updates the current user's SSH public key")
-    public ResponseEntity<Object> updateSshKey(
-            @Valid @RequestBody SshKeyDTO sshKeyDTO,
-            Authentication authentication) {
+    public ResponseEntity<List<UserDTO>> getUsersByRole(@PathVariable String role, Authentication authentication) {
         try {
-            String keycloakId = utils.getCurrentUserKeycloakId(authentication);
-
-            Optional<UserDTO> existingUserOpt = userService.getUserById(keycloakId);
-            if (existingUserOpt.isEmpty()) {
-                return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
-            }
-
-            // Validate SSH key
-            String sshPublicKey = sshKeyDTO.getSshPublicKey();
-            if (sshPublicKey != null && !sshPublicKey.trim().isEmpty()) {
-                sshPublicKey = sshKeyValidator.formatSshKey(sshPublicKey);
-                if (!sshKeyValidator.isValidSshPublicKey(sshPublicKey)) {
-                    return utils.createErrorResponse(HttpStatus.BAD_REQUEST,
-                            "Invalid SSH public key format. Please provide a valid SSH key.");
-                }
-            }
-
-            UserDTO updatedUser = userService.updateUserSshKey(keycloakId, sshPublicKey);
-            return ResponseEntity.ok(updatedUser);
+            String currentKeycloakUserId = utils.getCurrentUserKeycloakId(authentication);
+            List<UserDTO> users = userService.getUsersByRole(role.toLowerCase(), currentKeycloakUserId);
+            return ResponseEntity.ok(users);
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         } catch (Exception e) {
-            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, "Failed to update SSH key: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 

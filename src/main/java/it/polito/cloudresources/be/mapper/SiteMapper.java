@@ -1,6 +1,6 @@
 package it.polito.cloudresources.be.mapper;
 
-import it.polito.cloudresources.be.dto.FederationDTO;
+import it.polito.cloudresources.be.dto.SiteDTO;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.springframework.stereotype.Component;
 
@@ -8,20 +8,20 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Mapper for converting between Keycloak GroupRepresentation (Federation) and FederationDTO objects
+ * Mapper for converting between Keycloak GroupRepresentation (Site) and SiteDTO objects
  */
 @Component
-public class FederationMapper {
+public class SiteMapper {
     
     /**
-     * Convert from GroupRepresentation to FederationDTO
+     * Convert from GroupRepresentation to SiteDTO
      */
-    public FederationDTO toDto(GroupRepresentation group) {
+    public SiteDTO toDto(GroupRepresentation group) {
         if (group == null) {
             return null;
         }
         
-        FederationDTO dto = new FederationDTO();
+        SiteDTO dto = new SiteDTO();
         dto.setId(group.getId());
         dto.setName(group.getName());
         
@@ -37,9 +37,9 @@ public class FederationMapper {
     }
     
     /**
-     * Convert a list of GroupRepresentations to a list of FederationDTOs
+     * Convert a list of GroupRepresentations to a list of SiteDTOs
      */
-    public List<FederationDTO> toDto(List<GroupRepresentation> groups) {
+    public List<SiteDTO> toDto(List<GroupRepresentation> groups) {
         if (groups == null) {
             return null;
         }
@@ -50,9 +50,9 @@ public class FederationMapper {
     }
     
     /**
-     * Convert FederationDTO to GroupRepresentation for creation/updates
+     * Convert SiteDTO to GroupRepresentation for creation/updates
      */
-    public GroupRepresentation toEntity(FederationDTO dto) {
+    public GroupRepresentation toEntity(SiteDTO dto) {
         if (dto == null) {
             return null;
         }

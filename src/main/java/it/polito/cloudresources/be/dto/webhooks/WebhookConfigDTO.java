@@ -32,9 +32,9 @@ public class WebhookConfigDTO {
     private Long resourceId;
     private String resourceName;
     
-    @NotBlank(message = "Federation ID is required")
-    private String federationId;
-    private String federationName;
+    @NotBlank(message = "Site ID is required")
+    private String siteId;
+    private String siteName;
     
     // Resource type information
     private Long resourceTypeId;

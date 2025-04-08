@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
 
 /**
  * Configuration for initializing sample data for development
- * Updated to support federation model
  */
 @Configuration
 @RequiredArgsConstructor
@@ -79,35 +78,35 @@ public class DataInitializer {
     private void createResourceTypes() {
         log.info("Creating resource types...");
 
-        List<String> federationIds = keycloakService.getAllFederations().stream()
+        List<String> siteIds = keycloakService.getAllGroups().stream()
                 .map(group -> group.getId())
                 .collect(Collectors.toList());
 
-        if (federationIds.isEmpty()) {
-            log.warn("No federations found. Please run FederationDataInitializer first.");
+        if (siteIds.isEmpty()) {
+            log.warn("No sites found. Please run FederationDataInitializer first.");
             return;
         }
 
-        String poliToFedId = federationIds.get(0);
-        String secondFedId = federationIds.size() > 1 ? federationIds.get(1) : poliToFedId;
-        String thirdFedId = federationIds.size() > 2 ? federationIds.get(2) : poliToFedId;
+        String poliToFedId = siteIds.get(0);
+        String secondFedId = siteIds.size() > 1 ? siteIds.get(1) : poliToFedId;
+        String thirdFedId = siteIds.size() > 2 ? siteIds.get(2) : poliToFedId;
 
         ResourceType serverType = new ResourceType();
         serverType.setName("Server");
         serverType.setColor("#1976d2");
-        serverType.setFederationId(poliToFedId);
+        serverType.setSiteId(poliToFedId);
         resourceTypeRepository.save(serverType);
 
         ResourceType gpuType = new ResourceType();
         gpuType.setName("GPU");
         gpuType.setColor("#4caf50");
-        gpuType.setFederationId(secondFedId);
+        gpuType.setSiteId(secondFedId);
         resourceTypeRepository.save(gpuType);
 
         ResourceType switchType = new ResourceType();
         switchType.setName("Switch P4");
         switchType.setColor("#ff9800");
-        switchType.setFederationId(thirdFedId);
+        switchType.setSiteId(thirdFedId);
         resourceTypeRepository.save(switchType);
 
         log.info("Resource types created.");
@@ -147,7 +146,7 @@ public class DataInitializer {
         server1.setLocation("DC1");
         server1.setStatus(ResourceStatus.ACTIVE);
         server1.setType(serverType);
-        server1.setFederationId(serverType.getFederationId());
+        server1.setSiteId(serverType.getSiteId());
         resourceRepository.save(server1);
 
         Resource server2 = new Resource();
@@ -156,7 +155,7 @@ public class DataInitializer {
         server2.setLocation("DC1");
         server2.setStatus(ResourceStatus.ACTIVE);
         server2.setType(serverType);
-        server2.setFederationId(serverType.getFederationId());
+        server2.setSiteId(serverType.getSiteId());
         resourceRepository.save(server2);
 
         // Create GPU
@@ -166,7 +165,7 @@ public class DataInitializer {
         gpu.setLocation("DC2");
         gpu.setStatus(ResourceStatus.ACTIVE);
         gpu.setType(gpuType);
-        gpu.setFederationId(gpuType.getFederationId());
+        gpu.setSiteId(gpuType.getSiteId());
         resourceRepository.save(gpu);
 
         // Create Switch
@@ -176,7 +175,7 @@ public class DataInitializer {
         switch1.setLocation("DC1");
         switch1.setStatus(ResourceStatus.MAINTENANCE);
         switch1.setType(switchType);
-        switch1.setFederationId(switchType.getFederationId());
+        switch1.setSiteId(switchType.getSiteId());
         resourceRepository.save(switch1);
 
         log.info("Sample resources created.");
@@ -188,16 +187,16 @@ public class DataInitializer {
     private void createSampleUsers() {
         log.info("Ensuring sample users exist in Keycloak...");
 
-        List<String> federationIds = keycloakService.getAllFederations().stream()
+        List<String> siteIds = keycloakService.getAllGroups().stream()
                 .map(group -> group.getId())
                 .collect(Collectors.toList());
 
-        if (federationIds.isEmpty()) {
-            log.warn("No federations found. Sample users will not be created.");
+        if (siteIds.isEmpty()) {
+            log.warn("No sites found. Sample users will not be created.");
             return;
         }
 
-        String firstFedId = federationIds.get(0);
+        String firstFedId = siteIds.get(0);
 
         // Admin user
         String adminKeycloakId = ensureUserExists(
@@ -223,10 +222,10 @@ public class DataInitializer {
 
         log.info("Sample users ensured in Keycloak: Admin ID={}, User ID={}", adminKeycloakId, userKeycloakId);
 
-        // Ensure admin is in all federations
-        for (String fedId : federationIds) {
-            if (!keycloakService.isUserInFederation(adminKeycloakId, fedId)) {
-                keycloakService.addUserToFederation(adminKeycloakId, fedId);
+        // Ensure admin is in all sites
+        for (String fedId : siteIds) {
+            if (!keycloakService.isUserInGroup(adminKeycloakId, fedId)) {
+                keycloakService.addUserToKeycloakGroup(adminKeycloakId, fedId);
             }
         }
     }
@@ -243,8 +242,8 @@ public class DataInitializer {
             String userId = existingUser.get().getId();
 
             // Ensure user is in federation if specified
-            if (federationId != null && !keycloakService.isUserInFederation(userId, federationId)) {
-                keycloakService.addUserToFederation(userId, federationId);
+            if (federationId != null && !keycloakService.isUserInGroup(userId, federationId)) {
+                keycloakService.addUserToKeycloakGroup(userId, federationId);
             }
 
             return userId;
@@ -257,7 +256,7 @@ public class DataInitializer {
                     .lastName(lastName)
                     .roles(roles)
                     .avatar(avatar)
-                    .federationId(federationId)
+                    .siteId(federationId)
                     .build();
 
             // Use UserService to create the user
@@ -295,8 +294,8 @@ public class DataInitializer {
         ZonedDateTime now = ZonedDateTime.now(DateTimeConfig.DEFAULT_ZONE_ID);
 
         // Check if users have access to these resources
-        boolean adminHasAccess1 = keycloakService.isUserInFederation(adminKeycloakId, resource1.getFederationId());
-        boolean userHasAccess2 = keycloakService.isUserInFederation(regularUserKeycloakId, resource2.getFederationId());
+        boolean adminHasAccess1 = keycloakService.isUserInGroup(adminKeycloakId, resource1.getSiteId());
+        boolean userHasAccess2 = keycloakService.isUserInGroup(regularUserKeycloakId, resource2.getSiteId());
 
         // Create event for admin
         if (adminHasAccess1) {
@@ -311,7 +310,7 @@ public class DataInitializer {
             log.info("Created event for admin on resource {}", resource1.getName());
         } else {
             log.warn("Admin does not have access to resource {}. Make sure user is in federation {}.",
-                    resource1.getName(), resource1.getFederationId());
+                    resource1.getName(), resource1.getSiteId());
         }
 
         // Create event for user
@@ -328,7 +327,7 @@ public class DataInitializer {
         } else {
             // Try to find an accessible resource for the user
             Optional<Resource> accessibleResource = resources.stream()
-                    .filter(r -> keycloakService.isUserInFederation(regularUserKeycloakId, r.getFederationId()))
+                    .filter(r -> keycloakService.isUserInGroup(regularUserKeycloakId, r.getSiteId()))
                     .findFirst();
 
             if (accessibleResource.isPresent()) {

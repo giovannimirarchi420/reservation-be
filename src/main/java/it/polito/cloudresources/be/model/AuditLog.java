@@ -28,8 +28,8 @@ public class AuditLog {
     @Column(name = "username")
     private String username;
 
-    @Column(name = "federation_name")
-    private String federationName;
+    @Column(name = "site_name")
+    private String siteName;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "log_type", nullable = false, length = 50)

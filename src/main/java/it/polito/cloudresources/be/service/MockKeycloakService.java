@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 
 /**
  * Mock implementation of the KeycloakService for development without an actual Keycloak server
- * Updated to support federation functionality
+ * Updated to support site functionality
  */
 @Service
 @Profile("dev")
@@ -24,11 +24,11 @@ public class MockKeycloakService extends KeycloakService {
     private final Map<String, List<String>> userRoles = new HashMap<>();
     private final Map<String, Map<String, List<String>>> userAttributes = new HashMap<>();
 
-    // In-memory storage of mock federations (groups)
-    private final Map<String, GroupRepresentation> federations = new HashMap<>();
-    private final Map<String, Set<String>> federationMembers = new HashMap<>(); // federationId -> Set of userIds
-    private final Map<String, Set<String>> userFederations = new HashMap<>(); // userId -> Set of federationIds
-    private final Map<String, Set<String>> federationAdmins = new HashMap<>(); // federationId -> Set of adminUserIds
+    // In-memory storage of mock sites (groups)
+    private final Map<String, GroupRepresentation> sites = new HashMap<>();
+    private final Map<String, Set<String>> siteMembers = new HashMap<>(); // siteId -> Set of userIds
+    private final Map<String, Set<String>> userSites = new HashMap<>(); // userId -> Set of siteIds
+    private final Map<String, Set<String>> siteAdmins = new HashMap<>(); // siteId -> Set of adminUserIds
 
     /**
      * Constructor that initializes with some sample users
@@ -70,9 +70,9 @@ public class MockKeycloakService extends KeycloakService {
         users.put(regularUser.getId(), regularUser);
         userRoles.put(regularUser.getId(), List.of("USER"));
 
-        // Initialize empty sets for user federations
-        userFederations.put(adminUser.getId(), new HashSet<>());
-        userFederations.put(regularUser.getId(), new HashSet<>());
+        // Initialize empty sets for user sites
+        userSites.put(adminUser.getId(), new HashSet<>());
+        userSites.put(regularUser.getId(), new HashSet<>());
 
         log.info("MockKeycloakService initialized with sample users");
     }
@@ -127,11 +127,11 @@ public class MockKeycloakService extends KeycloakService {
 
         users.put(userId, user);
         userRoles.put(userId, roles != null ? new ArrayList<>(roles) : new ArrayList<>());
-        userFederations.put(userId, new HashSet<>());
+        userSites.put(userId, new HashSet<>());
 
-        // Add user to federation if specified
-        if (userDTO.getFederationId() != null && !userDTO.getFederationId().isEmpty()) {
-            addUserToFederation(userId, userDTO.getFederationId());
+        // Add user to site if specified
+        if (userDTO.getSiteId() != null && !userDTO.getSiteId().isEmpty()) {
+            addUserToKeycloakGroup(userId, userDTO.getSiteId());
         }
 
         log.info("Created mock user: {}", userDTO.getUsername());
@@ -194,19 +194,6 @@ public class MockKeycloakService extends KeycloakService {
             userRoles.put(userId, roles != null ? new ArrayList<>(roles) : new ArrayList<>());
         }
 
-        // Handle admin_federations attribute
-        if (attributes.containsKey("admin_federations")) {
-            @SuppressWarnings("unchecked")
-            List<String> adminFederations = (List<String>) attributes.get("admin_federations");
-            if (adminFederations != null) {
-                for (String fedId : adminFederations) {
-                    Set<String> admins = federationAdmins.getOrDefault(fedId, new HashSet<>());
-                    admins.add(userId);
-                    federationAdmins.put(fedId, admins);
-                }
-            }
-        }
-
         log.info("Updated mock user: {}", user.getUsername());
         return true;
     }
@@ -219,19 +206,19 @@ public class MockKeycloakService extends KeycloakService {
             userRoles.remove(userId);
             userAttributes.remove(userId);
 
-            // Remove from federations
-            Set<String> federationIds = userFederations.getOrDefault(userId, new HashSet<>());
-            for (String fedId : federationIds) {
-                Set<String> members = federationMembers.getOrDefault(fedId, new HashSet<>());
+            // Remove from sites
+            Set<String> siteIds = userSites.getOrDefault(userId, new HashSet<>());
+            for (String fedId : siteIds) {
+                Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
                 members.remove(userId);
-                federationMembers.put(fedId, members);
+                siteMembers.put(fedId, members);
 
                 // Remove from federation admins if applicable
-                Set<String> admins = federationAdmins.getOrDefault(fedId, new HashSet<>());
+                Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
                 admins.remove(userId);
-                federationAdmins.put(fedId, admins);
+                siteAdmins.put(fedId, admins);
             }
-            userFederations.remove(userId);
+            userSites.remove(userId);
 
             log.info("Deleted mock user: {}", username);
             return true;
@@ -290,17 +277,17 @@ public class MockKeycloakService extends KeycloakService {
     // New methods to support federations
 
     @Override
-    public List<GroupRepresentation> getAllFederations() {
-        return new ArrayList<>(federations.values());
+    public List<GroupRepresentation> getAllGroups() {
+        return new ArrayList<>(sites.values());
     }
 
     @Override
-    public Optional<GroupRepresentation> getFederationById(String id) {
-        return Optional.ofNullable(federations.get(id));
+    public Optional<GroupRepresentation> getGroupById(String id) {
+        return Optional.ofNullable(sites.get(id));
     }
 
     @Override
-    public String createFederation(String name, String description) {
+    public String setupNewKeycloakGroup(String name, String description) {
         String fedId = UUID.randomUUID().toString();
 
         GroupRepresentation group = new GroupRepresentation();
@@ -314,21 +301,21 @@ public class MockKeycloakService extends KeycloakService {
             group.setAttributes(attributes);
         }
 
-        federations.put(fedId, group);
-        federationMembers.put(fedId, new HashSet<>());
-        federationAdmins.put(fedId, new HashSet<>());
+        sites.put(fedId, group);
+        siteMembers.put(fedId, new HashSet<>());
+        siteAdmins.put(fedId, new HashSet<>());
 
         log.info("Created mock federation: {} with ID: {}", name, fedId);
         return fedId;
     }
 
     @Override
-    public boolean updateFederation(String fedId, GroupRepresentation updatedGroup) {
-        if (!federations.containsKey(fedId)) {
+    public boolean updateGroup(String fedId, GroupRepresentation updatedGroup) {
+        if (!sites.containsKey(fedId)) {
             return false;
         }
 
-        GroupRepresentation existingGroup = federations.get(fedId);
+        GroupRepresentation existingGroup = sites.get(fedId);
 
         // Update only what is provided
         if (updatedGroup.getName() != null) {
@@ -339,92 +326,92 @@ public class MockKeycloakService extends KeycloakService {
             existingGroup.setAttributes(updatedGroup.getAttributes());
         }
 
-        federations.put(fedId, existingGroup);
+        sites.put(fedId, existingGroup);
         log.info("Updated mock federation: {} with ID: {}", existingGroup.getName(), fedId);
         return true;
     }
 
     @Override
-    public boolean deleteFederation(String fedId) {
-        if (!federations.containsKey(fedId)) {
+    public boolean deleteGroup(String fedId) {
+        if (!sites.containsKey(fedId)) {
             return false;
         }
 
         // Remove federation
-        String fedName = federations.get(fedId).getName();
-        federations.remove(fedId);
+        String fedName = sites.get(fedId).getName();
+        sites.remove(fedId);
 
         // Remove all users from this federation
-        Set<String> members = federationMembers.getOrDefault(fedId, new HashSet<>());
+        Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
         for (String userId : members) {
-            Set<String> userFeds = userFederations.getOrDefault(userId, new HashSet<>());
+            Set<String> userFeds = userSites.getOrDefault(userId, new HashSet<>());
             userFeds.remove(fedId);
-            userFederations.put(userId, userFeds);
+            userSites.put(userId, userFeds);
         }
 
-        federationMembers.remove(fedId);
-        federationAdmins.remove(fedId);
+        siteMembers.remove(fedId);
+        siteAdmins.remove(fedId);
 
         log.info("Deleted mock federation: {} with ID: {}", fedName, fedId);
         return true;
     }
 
     @Override
-    public boolean isUserInFederation(String userId, String fedId) {
-        Set<String> members = federationMembers.getOrDefault(fedId, new HashSet<>());
+    public boolean isUserInGroup(String userId, String fedId) {
+        Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
         return members.contains(userId);
     }
 
     @Override
-    public boolean addUserToFederation(String userId, String fedId) {
+    public boolean addUserToKeycloakGroup(String userId, String groupId) {
         // Check if federation and user exist
-        if (!federations.containsKey(fedId) || !users.containsKey(userId)) {
+        if (!sites.containsKey(groupId) || !users.containsKey(userId)) {
             return false;
         }
 
         // Add user to federation
-        Set<String> members = federationMembers.getOrDefault(fedId, new HashSet<>());
+        Set<String> members = siteMembers.getOrDefault(groupId, new HashSet<>());
         members.add(userId);
-        federationMembers.put(fedId, members);
+        siteMembers.put(groupId, members);
 
         // Add federation to user
-        Set<String> userFeds = userFederations.getOrDefault(userId, new HashSet<>());
-        userFeds.add(fedId);
-        userFederations.put(userId, userFeds);
+        Set<String> userFeds = userSites.getOrDefault(userId, new HashSet<>());
+        userFeds.add(groupId);
+        userSites.put(userId, userFeds);
 
-        log.info("Added user {} to federation {}", userId, fedId);
+        log.info("Added user {} to federation {}", userId, groupId);
         return true;
     }
 
     @Override
-    public boolean removeUserFromFederation(String userId, String fedId) {
+    public boolean removeUserFromSite(String userId, String fedId) {
         // Check if user is in federation
-        if (!isUserInFederation(userId, fedId)) {
+        if (!isUserInGroup(userId, fedId)) {
             return true; // Already not in federation
         }
 
         // Remove user from federation
-        Set<String> members = federationMembers.getOrDefault(fedId, new HashSet<>());
+        Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
         members.remove(userId);
-        federationMembers.put(fedId, members);
+        siteMembers.put(fedId, members);
 
         // Remove federation from user
-        Set<String> userFeds = userFederations.getOrDefault(userId, new HashSet<>());
+        Set<String> userFeds = userSites.getOrDefault(userId, new HashSet<>());
         userFeds.remove(fedId);
-        userFederations.put(userId, userFeds);
+        userSites.put(userId, userFeds);
 
         // If user was admin of this federation, remove that too
-        Set<String> admins = federationAdmins.getOrDefault(fedId, new HashSet<>());
+        Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
         admins.remove(userId);
-        federationAdmins.put(fedId, admins);
+        siteAdmins.put(fedId, admins);
 
         log.info("Removed user {} from federation {}", userId, fedId);
         return true;
     }
 
     @Override
-    public List<UserRepresentation> getUsersInFederation(String fedId) {
-        Set<String> members = federationMembers.getOrDefault(fedId, new HashSet<>());
+    public List<UserRepresentation> getUsersInGroup(String fedId) {
+        Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
         return members.stream()
                 .map(users::get)
                 .filter(Objects::nonNull)
@@ -432,15 +419,15 @@ public class MockKeycloakService extends KeycloakService {
     }
 
     @Override
-    public List<String> getUserFederations(String userId) {
-        return new ArrayList<>(userFederations.getOrDefault(userId, new HashSet<>()));
+    public List<String> getUserSites(String userId) {
+        return new ArrayList<>(userSites.getOrDefault(userId, new HashSet<>()));
     }
 
     @Override
-    public List<GroupRepresentation> getUserFederationGroups(String userId) {
-        Set<String> federationIds = userFederations.getOrDefault(userId, new HashSet<>());
+    public List<GroupRepresentation> getUserGroups(String userId) {
+        Set<String> federationIds = userSites.getOrDefault(userId, new HashSet<>());
         return federationIds.stream()
-                .map(federations::get)
+                .map(sites::get)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
@@ -454,8 +441,8 @@ public class MockKeycloakService extends KeycloakService {
     @Override
     public boolean makeFederationAdmin(String userId, String fedId) {
         // Add user to federation if not already a member
-        if (!isUserInFederation(userId, fedId)) {
-            addUserToFederation(userId, fedId);
+        if (!isUserInGroup(userId, fedId)) {
+            addUserToKeycloakGroup(userId, fedId);
         }
 
         // Add FEDERATION_ADMIN role if not already assigned
@@ -466,17 +453,17 @@ public class MockKeycloakService extends KeycloakService {
         }
 
         // Add user to federation admins
-        Set<String> admins = federationAdmins.getOrDefault(fedId, new HashSet<>());
+        Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
         admins.add(userId);
-        federationAdmins.put(fedId, admins);
+        siteAdmins.put(fedId, admins);
 
         // Add to user attributes
         Map<String, List<String>> attributes = userAttributes.getOrDefault(userId, new HashMap<>());
-        List<String> adminFederations = attributes.getOrDefault("admin_federations", new ArrayList<>());
-        if (!adminFederations.contains(fedId)) {
-            adminFederations.add(fedId);
+        List<String> adminSites = attributes.getOrDefault("admin_federations", new ArrayList<>());
+        if (!adminSites.contains(fedId)) {
+            adminSites.add(fedId);
         }
-        attributes.put("admin_federations", adminFederations);
+        attributes.put("admin_federations", adminSites);
         userAttributes.put(userId, attributes);
 
         log.info("Made user {} admin of federation {}", userId, fedId);
@@ -486,19 +473,19 @@ public class MockKeycloakService extends KeycloakService {
     @Override
     public boolean removeFederationAdmin(String userId, String fedId) {
         // Remove from federation admins
-        Set<String> admins = federationAdmins.getOrDefault(fedId, new HashSet<>());
+        Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
         admins.remove(userId);
-        federationAdmins.put(fedId, admins);
+        siteAdmins.put(fedId, admins);
 
         // Update user attributes
         Map<String, List<String>> attributes = userAttributes.getOrDefault(userId, new HashMap<>());
-        List<String> adminFederations = attributes.getOrDefault("admin_federations", new ArrayList<>());
-        adminFederations.remove(fedId);
-        attributes.put("admin_federations", adminFederations);
+        List<String> adminSites = attributes.getOrDefault("admin_federations", new ArrayList<>());
+        adminSites.remove(fedId);
+        attributes.put("admin_federations", adminSites);
         userAttributes.put(userId, attributes);
 
-        // If no longer admin of any federation and not global admin, remove FEDERATION_ADMIN role
-        if (adminFederations.isEmpty() && !hasGlobalAdminRole(userId)) {
+        // If no longer admin of any site and not global admin, remove FEDERATION_ADMIN role
+        if (adminSites.isEmpty() && !hasGlobalAdminRole(userId)) {
             List<String> roles = getUserRoles(userId);
             roles.remove("FEDERATION_ADMIN");
             userRoles.put(userId, roles);
@@ -509,28 +496,28 @@ public class MockKeycloakService extends KeycloakService {
     }
 
     @Override
-    public boolean isUserFederationAdmin(String userId, String fedId) {
-        // Global admins are implicitly federation admins
+    public boolean isUserSiteAdmin(String userId, String fedId) {
+        // Global admins are implicitly site admins
         if (hasGlobalAdminRole(userId)) {
             return true;
         }
 
-        // Check if user is explicitly an admin of this federation
-        Set<String> admins = federationAdmins.getOrDefault(fedId, new HashSet<>());
+        // Check if user is explicitly an admin of this site
+        Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
         return admins.contains(userId);
     }
 
     @Override
-    public List<String> getUserAdminFederations(String userId) {
-        // Global admins can administer all federations
+    public List<String> getUserAdminGroups(String userId) {
+        // Global admins can administer all sites
         if (hasGlobalAdminRole(userId)) {
-            return new ArrayList<>(federations.keySet());
+            return new ArrayList<>(sites.keySet());
         }
 
-        // Get federations where user is explicitly an admin
+        // Get sites where user is explicitly an admin
         Map<String, List<String>> attributes = userAttributes.getOrDefault(userId, new HashMap<>());
-        List<String> adminFederations = attributes.getOrDefault("admin_federations", new ArrayList<>());
-        return new ArrayList<>(adminFederations);
+        List<String> adminSites = attributes.getOrDefault("admin_federations", new ArrayList<>());
+        return new ArrayList<>(adminSites);
     }
 
     @Override
