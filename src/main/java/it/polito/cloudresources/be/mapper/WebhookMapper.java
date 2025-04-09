@@ -1,6 +1,5 @@
 package it.polito.cloudresources.be.mapper;
 
-import it.polito.cloudresources.be.dto.SiteDTO;
 import it.polito.cloudresources.be.dto.webhooks.WebhookConfigDTO;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceType;
@@ -8,7 +7,6 @@ import it.polito.cloudresources.be.model.WebhookConfig;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import it.polito.cloudresources.be.service.KeycloakService;
-import it.polito.cloudresources.be.service.SiteService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.keycloak.representations.idm.GroupRepresentation;
@@ -25,7 +23,6 @@ public class WebhookMapper {
 
     private final ResourceRepository resourceRepository;
     private final ResourceTypeRepository resourceTypeRepository;
-    private final SiteService siteService;
     private final KeycloakService keycloakService;
     
     /**

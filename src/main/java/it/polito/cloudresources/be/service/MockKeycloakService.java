@@ -12,7 +12,6 @@ import java.util.stream.Collectors;
 
 /**
  * Mock implementation of the KeycloakService for development without an actual Keycloak server
- * Updated to support site functionality
  */
 @Service
 @Profile("dev")
@@ -28,56 +27,14 @@ public class MockKeycloakService extends KeycloakService {
     private final Map<String, GroupRepresentation> sites = new HashMap<>();
     private final Map<String, Set<String>> siteMembers = new HashMap<>(); // siteId -> Set of userIds
     private final Map<String, Set<String>> userSites = new HashMap<>(); // userId -> Set of siteIds
-    private final Map<String, Set<String>> siteAdmins = new HashMap<>(); // siteId -> Set of adminUserIds
 
     /**
-     * Constructor that initializes with some sample users
+     * Constructor initializes with basic structure
      */
     public MockKeycloakService() {
-        // Create sample admin user
-        UserRepresentation adminUser = new UserRepresentation();
-        adminUser.setId("admin-id");
-        adminUser.setUsername("admin");
-        adminUser.setEmail("admin@example.com");
-        adminUser.setFirstName("Admin");
-        adminUser.setLastName("User");
-        adminUser.setEnabled(true);
-        adminUser.setEmailVerified(true);
-
-        // Set admin attributes
-        Map<String, List<String>> adminAttributes = new HashMap<>();
-        adminAttributes.put(ATTR_AVATAR, Collections.singletonList("AU"));
-        userAttributes.put(adminUser.getId(), adminAttributes);
-
-        users.put(adminUser.getId(), adminUser);
-        userRoles.put(adminUser.getId(), Arrays.asList("ADMIN", "USER", "GLOBAL_ADMIN"));
-
-        // Create sample regular user
-        UserRepresentation regularUser = new UserRepresentation();
-        regularUser.setId("user-id");
-        regularUser.setUsername("user");
-        regularUser.setEmail("user@example.com");
-        regularUser.setFirstName("Regular");
-        regularUser.setLastName("User");
-        regularUser.setEnabled(true);
-        regularUser.setEmailVerified(true);
-
-        // Set user attributes
-        Map<String, List<String>> userAttributes = new HashMap<>();
-        userAttributes.put(ATTR_AVATAR, Collections.singletonList("RU"));
-        this.userAttributes.put(regularUser.getId(), userAttributes);
-
-        users.put(regularUser.getId(), regularUser);
-        userRoles.put(regularUser.getId(), List.of("USER"));
-
-        // Initialize empty sets for user sites
-        userSites.put(adminUser.getId(), new HashSet<>());
-        userSites.put(regularUser.getId(), new HashSet<>());
-
-        log.info("MockKeycloakService initialized with sample users");
+        log.info("Initializing MockKeycloakService");
     }
 
-    // Original methods from MockKeycloakService
     @Override
     public List<UserRepresentation> getUsers() {
         return new ArrayList<>(users.values());
@@ -208,15 +165,10 @@ public class MockKeycloakService extends KeycloakService {
 
             // Remove from sites
             Set<String> siteIds = userSites.getOrDefault(userId, new HashSet<>());
-            for (String fedId : siteIds) {
-                Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
+            for (String siteId : siteIds) {
+                Set<String> members = siteMembers.getOrDefault(siteId, new HashSet<>());
                 members.remove(userId);
-                siteMembers.put(fedId, members);
-
-                // Remove from federation admins if applicable
-                Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
-                admins.remove(userId);
-                siteAdmins.put(fedId, admins);
+                siteMembers.put(siteId, members);
             }
             userSites.remove(userId);
 
@@ -244,24 +196,6 @@ public class MockKeycloakService extends KeycloakService {
     }
 
     @Override
-    public void ensureRealmRoles(String... roleNames) {
-        log.info("Ensuring mock realm roles: {}", Arrays.toString(roleNames));
-        // No-op in mock implementation
-    }
-
-    @Override
-    public boolean isKeycloakAvailable() {
-        // Mock is always available
-        return true;
-    }
-
-    @Override
-    public List<String> getAvailableClientRoles() {
-        // Return basic roles
-        return Arrays.asList("USER", "ADMIN", "GLOBAL_ADMIN", "FEDERATION_ADMIN");
-    }
-
-    @Override
     public List<UserRepresentation> getUsersByRole(String roleName) {
         List<UserRepresentation> result = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : userRoles.entrySet()) {
@@ -274,7 +208,7 @@ public class MockKeycloakService extends KeycloakService {
         return result;
     }
 
-    // New methods to support federations
+    // Site (Group) related methods
 
     @Override
     public List<GroupRepresentation> getAllGroups() {
@@ -287,11 +221,18 @@ public class MockKeycloakService extends KeycloakService {
     }
 
     @Override
+    public Optional<GroupRepresentation> getGroupByName(String groupName) {
+        return sites.values().stream()
+                .filter(group -> group.getName().equals(groupName))
+                .findFirst();
+    }
+
+    @Override
     public String setupNewKeycloakGroup(String name, String description) {
-        String fedId = UUID.randomUUID().toString();
+        String siteId = UUID.randomUUID().toString();
 
         GroupRepresentation group = new GroupRepresentation();
-        group.setId(fedId);
+        group.setId(siteId);
         group.setName(name);
 
         // Set attributes for the description
@@ -301,21 +242,23 @@ public class MockKeycloakService extends KeycloakService {
             group.setAttributes(attributes);
         }
 
-        sites.put(fedId, group);
-        siteMembers.put(fedId, new HashSet<>());
-        siteAdmins.put(fedId, new HashSet<>());
+        sites.put(siteId, group);
+        siteMembers.put(siteId, new HashSet<>());
 
-        log.info("Created mock federation: {} with ID: {}", name, fedId);
-        return fedId;
+        // Create the site admin role for this site
+        createSiteAdminRole(name);
+
+        log.info("Created mock site: {} with ID: {}", name, siteId);
+        return siteId;
     }
 
     @Override
-    public boolean updateGroup(String fedId, GroupRepresentation updatedGroup) {
-        if (!sites.containsKey(fedId)) {
+    public boolean updateGroup(String siteId, GroupRepresentation updatedGroup) {
+        if (!sites.containsKey(siteId)) {
             return false;
         }
 
-        GroupRepresentation existingGroup = sites.get(fedId);
+        GroupRepresentation existingGroup = sites.get(siteId);
 
         // Update only what is provided
         if (updatedGroup.getName() != null) {
@@ -326,96 +269,167 @@ public class MockKeycloakService extends KeycloakService {
             existingGroup.setAttributes(updatedGroup.getAttributes());
         }
 
-        sites.put(fedId, existingGroup);
-        log.info("Updated mock federation: {} with ID: {}", existingGroup.getName(), fedId);
+        sites.put(siteId, existingGroup);
+        log.info("Updated mock site: {} with ID: {}", existingGroup.getName(), siteId);
         return true;
     }
 
     @Override
-    public boolean deleteGroup(String fedId) {
-        if (!sites.containsKey(fedId)) {
+    public boolean deleteGroup(String siteId) {
+        if (!sites.containsKey(siteId)) {
             return false;
         }
 
-        // Remove federation
-        String fedName = sites.get(fedId).getName();
-        sites.remove(fedId);
+        // Remove site
+        String siteName = sites.get(siteId).getName();
+        sites.remove(siteId);
 
-        // Remove all users from this federation
-        Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
+        // Remove all users from this site
+        Set<String> members = siteMembers.getOrDefault(siteId, new HashSet<>());
         for (String userId : members) {
-            Set<String> userFeds = userSites.getOrDefault(userId, new HashSet<>());
-            userFeds.remove(fedId);
-            userSites.put(userId, userFeds);
+            Set<String> userSiteSet = userSites.getOrDefault(userId, new HashSet<>());
+            userSiteSet.remove(siteId);
+            userSites.put(userId, userSiteSet);
+
+            // Remove the site admin role if the user had it
+            String siteAdminRole = getSiteAdminRoleName(siteName);
+            List<String> userRolesList = userRoles.getOrDefault(userId, new ArrayList<>());
+            userRolesList.remove(siteAdminRole);
+            userRoles.put(userId, userRolesList);
         }
 
-        siteMembers.remove(fedId);
-        siteAdmins.remove(fedId);
+        siteMembers.remove(siteId);
 
-        log.info("Deleted mock federation: {} with ID: {}", fedName, fedId);
+        log.info("Deleted mock site: {} with ID: {}", siteName, siteId);
         return true;
     }
 
     @Override
-    public boolean isUserInGroup(String userId, String fedId) {
-        Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
+    public boolean isUserInGroup(String userId, String siteId) {
+        Set<String> members = siteMembers.getOrDefault(siteId, new HashSet<>());
         return members.contains(userId);
     }
 
     @Override
-    public boolean addUserToKeycloakGroup(String userId, String groupId) {
-        // Check if federation and user exist
-        if (!sites.containsKey(groupId) || !users.containsKey(userId)) {
+    public boolean addUserToKeycloakGroup(String userId, String siteId) {
+        // Check if site and user exist
+        if (!sites.containsKey(siteId) || !users.containsKey(userId)) {
             return false;
         }
 
-        // Add user to federation
-        Set<String> members = siteMembers.getOrDefault(groupId, new HashSet<>());
+        // Add user to site
+        Set<String> members = siteMembers.getOrDefault(siteId, new HashSet<>());
         members.add(userId);
-        siteMembers.put(groupId, members);
+        siteMembers.put(siteId, members);
 
-        // Add federation to user
-        Set<String> userFeds = userSites.getOrDefault(userId, new HashSet<>());
-        userFeds.add(groupId);
-        userSites.put(userId, userFeds);
+        // Add site to user
+        Set<String> userSiteSet = userSites.getOrDefault(userId, new HashSet<>());
+        userSiteSet.add(siteId);
+        userSites.put(userId, userSiteSet);
 
-        log.info("Added user {} to federation {}", userId, groupId);
+        log.info("Added user {} to site {}", userId, siteId);
         return true;
     }
 
     @Override
-    public boolean removeUserFromSite(String userId, String fedId) {
-        // Check if user is in federation
-        if (!isUserInGroup(userId, fedId)) {
-            return true; // Already not in federation
+    public String getSiteAdminRoleName(String siteName) {
+        return siteName.toLowerCase().replace(' ', '_') + "_site_admin";
+    }
+
+    @Override
+    public boolean createSiteAdminRole(String siteName) {
+        // In mock implementation, we just log it
+        log.info("Created site admin role: {}", getSiteAdminRoleName(siteName));
+        return true;
+    }
+
+    @Override
+    public boolean assignSiteAdminRole(String userId, String siteName) {
+        // Get site ID from name
+        Optional<GroupRepresentation> siteOpt = getGroupByName(siteName);
+        if (!siteOpt.isPresent()) {
+            log.warn("Site not found with name: {}", siteName);
+            return false;
         }
 
-        // Remove user from federation
-        Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
-        members.remove(userId);
-        siteMembers.put(fedId, members);
+        String siteId = siteOpt.get().getId();
 
-        // Remove federation from user
-        Set<String> userFeds = userSites.getOrDefault(userId, new HashSet<>());
-        userFeds.remove(fedId);
-        userSites.put(userId, userFeds);
+        // First ensure the user is a member of the site
+        if (!isUserInGroup(userId, siteId)) {
+            addUserToKeycloakGroup(userId, siteId);
+        }
 
-        // If user was admin of this federation, remove that too
-        Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
-        admins.remove(userId);
-        siteAdmins.put(fedId, admins);
+        // Add the site-specific admin role to the user
+        String siteAdminRole = getSiteAdminRoleName(siteName);
+        List<String> userRolesList = userRoles.getOrDefault(userId, new ArrayList<>());
+        if (!userRolesList.contains(siteAdminRole)) {
+            userRolesList.add(siteAdminRole);
+            userRoles.put(userId, userRolesList);
+        }
 
-        log.info("Removed user {} from federation {}", userId, fedId);
+        log.info("Assigned site admin role {} to user {}", siteAdminRole, userId);
         return true;
     }
 
     @Override
-    public List<UserRepresentation> getUsersInGroup(String fedId) {
-        Set<String> members = siteMembers.getOrDefault(fedId, new HashSet<>());
-        return members.stream()
-                .map(users::get)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+    public void removeSiteAdminRole(String userId, String siteId, String requesterUserId) {
+        // Check permissions - requesterUserId should be a global admin or site admin
+        if (!hasGlobalAdminRole(requesterUserId) && !isUserSiteAdmin(requesterUserId, siteId)) {
+            log.warn("User {} doesn't have permission to remove site admin role", requesterUserId);
+            throw new org.springframework.security.access.AccessDeniedException("Cannot remove site admin role");
+        }
+
+        // Get the site name
+        String siteName = sites.get(siteId).getName();
+        String siteAdminRole = getSiteAdminRoleName(siteName);
+
+        // Remove the site admin role from the user
+        List<String> userRolesList = userRoles.getOrDefault(userId, new ArrayList<>());
+        userRolesList.remove(siteAdminRole);
+        userRoles.put(userId, userRolesList);
+
+        log.info("Removed site admin role {} from user {}", siteAdminRole, userId);
+    }
+
+    @Override
+    public boolean isUserSiteAdmin(String userId, String siteId) {
+        // Global admins are implicitly site admins
+        if (hasGlobalAdminRole(userId)) {
+            return true;
+        }
+
+        // Get the site name
+        GroupRepresentation site = sites.get(siteId);
+        if (site == null) {
+            return false;
+        }
+
+        // Check if user has the site-specific admin role
+        String siteAdminRole = getSiteAdminRoleName(site.getName());
+        List<String> userRolesList = userRoles.getOrDefault(userId, new ArrayList<>());
+        return userRolesList.contains(siteAdminRole);
+    }
+
+    @Override
+    public List<String> getUserAdminGroups(String userId) {
+        // For each site, check if user has the site admin role
+        List<String> adminSites = new ArrayList<>();
+
+        for (GroupRepresentation site : sites.values()) {
+            String siteAdminRole = getSiteAdminRoleName(site.getName());
+            List<String> userRolesList = userRoles.getOrDefault(userId, new ArrayList<>());
+
+            if (userRolesList.contains(siteAdminRole)) {
+                adminSites.add(site.getId());
+            }
+        }
+
+        // Global admins can administer all sites
+        if (hasGlobalAdminRole(userId)) {
+            return new ArrayList<>(sites.keySet());
+        }
+
+        return adminSites;
     }
 
     @Override
@@ -425,8 +439,8 @@ public class MockKeycloakService extends KeycloakService {
 
     @Override
     public List<GroupRepresentation> getUserGroups(String userId) {
-        Set<String> federationIds = userSites.getOrDefault(userId, new HashSet<>());
-        return federationIds.stream()
+        Set<String> siteIds = userSites.getOrDefault(userId, new HashSet<>());
+        return siteIds.stream()
                 .map(sites::get)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
@@ -439,100 +453,49 @@ public class MockKeycloakService extends KeycloakService {
     }
 
     @Override
-    public boolean makeFederationAdmin(String userId, String fedId) {
-        // Add user to federation if not already a member
-        if (!isUserInGroup(userId, fedId)) {
-            addUserToKeycloakGroup(userId, fedId);
-        }
-
-        // Add FEDERATION_ADMIN role if not already assigned
-        List<String> roles = getUserRoles(userId);
-        if (!roles.contains("FEDERATION_ADMIN")) {
-            roles.add("FEDERATION_ADMIN");
-            userRoles.put(userId, roles);
-        }
-
-        // Add user to federation admins
-        Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
-        admins.add(userId);
-        siteAdmins.put(fedId, admins);
-
-        // Add to user attributes
-        Map<String, List<String>> attributes = userAttributes.getOrDefault(userId, new HashMap<>());
-        List<String> adminSites = attributes.getOrDefault("admin_federations", new ArrayList<>());
-        if (!adminSites.contains(fedId)) {
-            adminSites.add(fedId);
-        }
-        attributes.put("admin_federations", adminSites);
-        userAttributes.put(userId, attributes);
-
-        log.info("Made user {} admin of federation {}", userId, fedId);
-        return true;
+    public List<UserRepresentation> getUsersInGroup(String siteId) {
+        Set<String> members = siteMembers.getOrDefault(siteId, new HashSet<>());
+        return members.stream()
+                .map(users::get)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
 
     @Override
-    public boolean removeFederationAdmin(String userId, String fedId) {
-        // Remove from federation admins
-        Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
-        admins.remove(userId);
-        siteAdmins.put(fedId, admins);
-
-        // Update user attributes
-        Map<String, List<String>> attributes = userAttributes.getOrDefault(userId, new HashMap<>());
-        List<String> adminSites = attributes.getOrDefault("admin_federations", new ArrayList<>());
-        adminSites.remove(fedId);
-        attributes.put("admin_federations", adminSites);
-        userAttributes.put(userId, attributes);
-
-        // If no longer admin of any site and not global admin, remove FEDERATION_ADMIN role
-        if (adminSites.isEmpty() && !hasGlobalAdminRole(userId)) {
-            List<String> roles = getUserRoles(userId);
-            roles.remove("FEDERATION_ADMIN");
-            userRoles.put(userId, roles);
-        }
-
-        log.info("Removed admin status from user {} for federation {}", userId, fedId);
-        return true;
-    }
-
-    @Override
-    public boolean isUserSiteAdmin(String userId, String fedId) {
-        // Global admins are implicitly site admins
-        if (hasGlobalAdminRole(userId)) {
-            return true;
-        }
-
-        // Check if user is explicitly an admin of this site
-        Set<String> admins = siteAdmins.getOrDefault(fedId, new HashSet<>());
-        return admins.contains(userId);
-    }
-
-    @Override
-    public List<String> getUserAdminGroups(String userId) {
-        // Global admins can administer all sites
-        if (hasGlobalAdminRole(userId)) {
-            return new ArrayList<>(sites.keySet());
-        }
-
-        // Get sites where user is explicitly an admin
-        Map<String, List<String>> attributes = userAttributes.getOrDefault(userId, new HashMap<>());
-        List<String> adminSites = attributes.getOrDefault("admin_federations", new ArrayList<>());
-        return new ArrayList<>(adminSites);
-    }
-
-    @Override
-    public boolean assignRoleToUser(String userId, String roleName) {
-        if (!users.containsKey(userId)) {
+    public boolean makeSiteAdmin(String userId, String siteId, String requesterUserId) {
+        // Check permissions
+        if (!hasGlobalAdminRole(requesterUserId) && !isUserSiteAdmin(requesterUserId, siteId)) {
+            log.warn("User {} doesn't have permission to make site admin", requesterUserId);
             return false;
         }
 
-        List<String> roles = getUserRoles(userId);
-        if (!roles.contains(roleName)) {
-            roles.add(roleName);
+        // Get the site name
+        GroupRepresentation site = sites.get(siteId);
+        if (site == null) {
+            log.warn("Site not found with ID: {}", siteId);
+            return false;
         }
-        userRoles.put(userId, roles);
 
-        log.info("Assigned role {} to user {}", roleName, userId);
+        // Ensure user is in site
+        if (!isUserInGroup(userId, siteId)) {
+            addUserToKeycloakGroup(userId, siteId);
+        }
+
+        // Add the site-specific admin role to the user
+        String siteAdminRole = getSiteAdminRoleName(site.getName());
+        List<String> userRolesList = userRoles.getOrDefault(userId, new ArrayList<>());
+        if (!userRolesList.contains(siteAdminRole)) {
+            userRolesList.add(siteAdminRole);
+            userRoles.put(userId, userRolesList);
+        }
+
+        log.info("User {} made admin of site {} with role {}", userId, siteId, siteAdminRole);
         return true;
+    }
+
+    @Override
+    public void ensureRealmRoles(String... roleNames) {
+        log.info("Ensuring mock realm roles: {}", Arrays.toString(roleNames));
+        // No-op in mock implementation
     }
 }

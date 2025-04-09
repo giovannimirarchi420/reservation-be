@@ -12,11 +12,8 @@ import jakarta.persistence.EntityExistsException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.keycloak.admin.client.resource.RoleResource;
 import org.keycloak.representations.idm.GroupRepresentation;
-import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -112,7 +109,7 @@ public class UserService {
      */
     public UserDTO createUser(CreateUserDTO createUserDTO, String password, String requesterUserId) {
 
-        if(keycloakService.getUserAdminGroups(requesterUserId).isEmpty() ||
+        if(keycloakService.getUserAdminGroups(requesterUserId).isEmpty() &&
                 !keycloakService.hasGlobalAdminRole(requesterUserId)) {
             throw new AccessDeniedException("User can't create new users");
         }
@@ -135,7 +132,6 @@ public class UserService {
                 .avatar(createUserDTO.getAvatar())
                 .sshPublicKey(createUserDTO.getSshPublicKey())
                 .roles(createUserDTO.getRoles())
-                .siteId(createUserDTO.getSiteId())
                 .withGeneratedAvatarIfEmpty()
                 .withNormalizedEmail()
                 .withUppercaseRoles()

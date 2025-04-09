@@ -1,7 +1,6 @@
 package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.ResourceDTO;
-import it.polito.cloudresources.be.dto.SiteDTO;
 import it.polito.cloudresources.be.mapper.ResourceMapper;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Event;
@@ -15,8 +14,6 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +50,7 @@ public class ResourceService {
         } else {
             // Site admins and regular users see only resources in their site
             List<String> userSites = keycloakService.getUserSites(userId);
+            System.out.print("TEST TEST: " + userSites);
             log.info("User requested with sites: " + userSites);
             return resourceMapper.toDto(resourceRepository.findBySiteIdIn(userSites));
         }
@@ -67,8 +65,7 @@ public class ResourceService {
 
         return resourceMapper.toDto(resourceRepository.findBySiteId(siteId));
     }
-    
-    @Transactional
+
     public ResourceDTO createResource(ResourceDTO resourceDTO, String userId) {
         // Check authorization
         if (!canUpdateResourceInSite(userId, resourceDTO.getSiteId())) {

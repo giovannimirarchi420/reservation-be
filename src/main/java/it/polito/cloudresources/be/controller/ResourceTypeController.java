@@ -4,25 +4,18 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.ResourceTypeDTO;
-import it.polito.cloudresources.be.model.Resource;
-import it.polito.cloudresources.be.service.SiteService;
-import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.ResourceTypeService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.apache.coyote.Response;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * REST API controller for managing resource types
@@ -35,8 +28,6 @@ import java.util.stream.Collectors;
 public class ResourceTypeController {
 
     private final ResourceTypeService resourceTypeService;
-    private final SiteService siteService;
-    private final KeycloakService keycloakService;
     private final ControllerUtils utils;
 
     /**

@@ -6,7 +6,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.EventDTO;
 import it.polito.cloudresources.be.service.EventService;
-import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
@@ -34,7 +33,6 @@ import java.util.List;
 public class EventController {
 
     private final EventService eventService;
-    private final KeycloakService  keycloakService;
     private final ControllerUtils utils;
 
     /**

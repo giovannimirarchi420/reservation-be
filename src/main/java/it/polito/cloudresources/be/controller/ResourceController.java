@@ -3,16 +3,15 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import it.polito.cloudresources.be.dto.SiteDTO;
 import it.polito.cloudresources.be.dto.ResourceDTO;
 import it.polito.cloudresources.be.model.ResourceStatus;
-import it.polito.cloudresources.be.service.SiteService;
-import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.ResourceService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -20,7 +19,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * REST API controller for managing resources
@@ -30,10 +28,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Tag(name = "Resources", description = "API for managing cloud resources")
 @SecurityRequirement(name = "bearer-auth")
+@Slf4j
 public class ResourceController {
 
     private final ResourceService resourceService;
-    private final SiteService siteService;
     private final ControllerUtils utils;
 
     /**
@@ -46,11 +44,11 @@ public class ResourceController {
             @RequestParam(required = false) Long typeId,
             @RequestParam(required = false) String siteId,
             Authentication authentication) {
-
-        String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+        
         List<ResourceDTO> resources;
-
         try {
+            String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+            log.debug(currentUserKeycloakId);
             // Check site access if siteId is provided
             if (siteId != null) {
                 // Get resources from this specific site

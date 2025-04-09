@@ -1,7 +1,6 @@
 package it.polito.cloudresources.be.config.dev;
 
 import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
-import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
@@ -10,37 +9,36 @@ import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import it.polito.cloudresources.be.service.KeycloakService;
-import it.polito.cloudresources.be.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Profile;
 
 import java.time.ZonedDateTime;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Configuration for initializing sample data for development
+ * Configuration for initializing sample resources and events for development
+ * Updated to work with the site-specific admin roles approach
  */
 @Configuration
 @RequiredArgsConstructor
 @Slf4j
 @Profile("dev") // Only run in development profile
+@DependsOn("initSites") // Make sure sites are initialized first
 public class DataInitializer {
 
     private final ResourceTypeRepository resourceTypeRepository;
     private final ResourceRepository resourceRepository;
     private final EventRepository eventRepository;
     private final KeycloakService keycloakService;
-    private final UserService userService;
 
     /**
      * Initialize sample data
@@ -60,9 +58,6 @@ public class DataInitializer {
                 createSampleResources();
             }
 
-            // Create sample users in Keycloak
-            createSampleUsers();
-
             // Create sample events if none exist
             if (eventRepository.count() == 0) {
                 createSampleEvents();
@@ -79,34 +74,34 @@ public class DataInitializer {
         log.info("Creating resource types...");
 
         List<String> siteIds = keycloakService.getAllGroups().stream()
-                .map(group -> group.getId())
+                .map(GroupRepresentation::getId)
                 .collect(Collectors.toList());
 
         if (siteIds.isEmpty()) {
-            log.warn("No sites found. Please run FederationDataInitializer first.");
+            log.warn("No sites found. Please run SiteDataInitializer first.");
             return;
         }
 
-        String poliToFedId = siteIds.get(0);
-        String secondFedId = siteIds.size() > 1 ? siteIds.get(1) : poliToFedId;
-        String thirdFedId = siteIds.size() > 2 ? siteIds.get(2) : poliToFedId;
+        String poliToSiteId = siteIds.get(0);
+        String secondSiteId = siteIds.size() > 1 ? siteIds.get(1) : poliToSiteId;
+        String thirdSiteId = siteIds.size() > 2 ? siteIds.get(2) : poliToSiteId;
 
         ResourceType serverType = new ResourceType();
         serverType.setName("Server");
         serverType.setColor("#1976d2");
-        serverType.setSiteId(poliToFedId);
+        serverType.setSiteId(poliToSiteId);
         resourceTypeRepository.save(serverType);
 
         ResourceType gpuType = new ResourceType();
         gpuType.setName("GPU");
         gpuType.setColor("#4caf50");
-        gpuType.setSiteId(secondFedId);
+        gpuType.setSiteId(secondSiteId);
         resourceTypeRepository.save(gpuType);
 
         ResourceType switchType = new ResourceType();
         switchType.setName("Switch P4");
         switchType.setColor("#ff9800");
-        switchType.setSiteId(thirdFedId);
+        switchType.setSiteId(thirdSiteId);
         resourceTypeRepository.save(switchType);
 
         log.info("Resource types created.");
@@ -182,90 +177,6 @@ public class DataInitializer {
     }
 
     /**
-     * Create sample users in Keycloak
-     */
-    private void createSampleUsers() {
-        log.info("Ensuring sample users exist in Keycloak...");
-
-        List<String> siteIds = keycloakService.getAllGroups().stream()
-                .map(group -> group.getId())
-                .collect(Collectors.toList());
-
-        if (siteIds.isEmpty()) {
-            log.warn("No sites found. Sample users will not be created.");
-            return;
-        }
-
-        String firstFedId = siteIds.get(0);
-
-        // Admin user
-        String adminKeycloakId = ensureUserExists(
-                "admin1",
-                "admin@example.com",
-                "Mario",
-                "Rossi",
-                "admin123",
-                new HashSet<>(Arrays.asList("ADMIN", "USER", "GLOBAL_ADMIN")),
-                "AU",
-                firstFedId);
-
-        // Regular user
-        String userKeycloakId = ensureUserExists(
-                "user1",
-                "user@example.com",
-                "Dario",
-                "Argento",
-                "user123",
-                new HashSet<>(Collections.singletonList("USER")),
-                "RU",
-                firstFedId);
-
-        log.info("Sample users ensured in Keycloak: Admin ID={}, User ID={}", adminKeycloakId, userKeycloakId);
-
-        // Ensure admin is in all sites
-        for (String fedId : siteIds) {
-            if (!keycloakService.isUserInGroup(adminKeycloakId, fedId)) {
-                keycloakService.addUserToKeycloakGroup(adminKeycloakId, fedId);
-            }
-        }
-    }
-
-    /**
-     * Ensure a user exists in Keycloak, create if not
-     */
-    private String ensureUserExists(String username, String email, String firstName, String lastName,
-                                    String password, HashSet<String> roles, String avatar, String federationId) {
-        // Check if user already exists
-        Optional<UserRepresentation> existingUser = keycloakService.getUserByUsername(username);
-
-        if (existingUser.isPresent()) {
-            String userId = existingUser.get().getId();
-
-            // Ensure user is in federation if specified
-            if (federationId != null && !keycloakService.isUserInGroup(userId, federationId)) {
-                keycloakService.addUserToKeycloakGroup(userId, federationId);
-            }
-
-            return userId;
-        } else {
-            // Create new user using UserDTO
-            UserDTO userDTO = UserDTO.builder()
-                    .username(username)
-                    .email(email)
-                    .firstName(firstName)
-                    .lastName(lastName)
-                    .roles(roles)
-                    .avatar(avatar)
-                    .siteId(federationId)
-                    .build();
-
-            // Use UserService to create the user
-            UserDTO createdUser = userService.createUser(userDTO, password);
-            return createdUser.getId();
-        }
-    }
-
-    /**
      * Create sample events
      */
     private void createSampleEvents() {
@@ -309,7 +220,7 @@ public class DataInitializer {
             eventRepository.save(event1);
             log.info("Created event for admin on resource {}", resource1.getName());
         } else {
-            log.warn("Admin does not have access to resource {}. Make sure user is in federation {}.",
+            log.warn("Admin does not have access to resource {}. Make sure user is in site {}.",
                     resource1.getName(), resource1.getSiteId());
         }
 
@@ -341,7 +252,7 @@ public class DataInitializer {
                 eventRepository.save(event2);
                 log.info("Created event for regular user on resource {}", accessibleResource.get().getName());
             } else {
-                log.warn("Regular user does not have access to any resources. Make sure user is in at least one federation.");
+                log.warn("Regular user does not have access to any resources. Make sure user is in at least one site.");
             }
         }
 

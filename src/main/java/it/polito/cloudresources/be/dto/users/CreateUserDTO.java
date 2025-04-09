@@ -45,9 +45,6 @@ public class CreateUserDTO {
     @NotNull(message = "Roles are required")
     private Set<String> roles;
 
-    @NotBlank(message = "Site ID is required")
-    private String siteId;
-
     /**
      * Fluent builder for CreateUserDTO
      */

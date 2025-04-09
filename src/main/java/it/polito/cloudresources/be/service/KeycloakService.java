@@ -14,13 +14,10 @@ import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
-
-import it.polito.cloudresources.be.mapper.SiteMapper;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -35,9 +32,6 @@ public class KeycloakService {
 
     public static final String ATTR_SSH_KEY = "ssh_key";
     public static final String ATTR_AVATAR = "avatar";
-    
-    @Autowired
-    private SiteMapper siteMapper;
 
     @Value("${keycloak.auth-server-url}")
     private String authServerUrl;
@@ -158,9 +152,11 @@ public class KeycloakService {
                 // Continue anyway as the user has been created
             }
 
-            // Assign roles to user
+            assignGroupsToUser(userId);
+
+            // Assign roles to user TODO: Manage federation
             if (roles != null && !roles.isEmpty()) {
-                assignRolesToUser(userId);
+
             }
 
             return userId;
@@ -660,13 +656,22 @@ public class KeycloakService {
      */
     public List<String> getUserAdminGroups(String userId) {
         try {
+            // First check if the user exists
             UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
-            List<String> groups = user.getGroups();
-
-            return groups.stream()
-                    .filter(groupName -> groupName.startsWith("site_") && groupName.endsWith("_admin"))
-                    .map(gropName -> gropName.split("_")[1])
-                    .toList();
+            
+            // We need to get the user's roles directly instead of relying on groups
+            List<String> roles = getUserRoles(userId);
+            
+            // Filter roles that match the site admin pattern: {sitename}_site_admin
+            return roles.stream()
+                .filter(role -> role.endsWith("_site_admin"))
+                .map(role -> {
+                    // Extract site name from the role name
+                    // The format is {sitename}_site_admin, so we remove "_site_admin"
+                    return role.substring(0, role.length() - "_site_admin".length());
+                })
+                .collect(Collectors.toList());
+                
         } catch (Exception e) {
             log.error("Error getting admin sites for user {}", userId, e);
             return new ArrayList<>();
@@ -902,23 +907,31 @@ public class KeycloakService {
     }
 
     /**
-     * Assigns roles to a user, all site_<site_name>_user will be assigned by default
+     * Assigns groups to a user
      *
      * @param userId the user ID
-     * @return true if roles were assigned successfully, false otherwise
+     * @return true if groups were assigned successfully, false otherwise
      */
-    private boolean assignRolesToUser(String userId) {
-        try { //TODO: Assign user roles based on available groups
-            log.debug("Attempting to assign roles to user: {}", userId);
-            List<RoleRepresentation> realmRoles = getRealmResource().roles().list().stream().filter(role -> role.getName().startsWith("site_")
-                    && role.getName().endsWith("_user")).toList();
-
-            getRealmResource().users().get(userId).roles().realmLevel().add(realmRoles);
-            log.debug("Roles successfully assigned to user: {} - Roles: {}", userId, realmRoles);
+    private boolean assignGroupsToUser(String userId) {
+        try {
+            log.debug("Attempting to assign groups to user: {}", userId);
+            
+            // Get the user resource
+            UserResource userResource = getRealmResource().users().get(userId);
+            
+            // Get all groups in the realm
+            List<GroupRepresentation> groups = getRealmResource().groups().groups();
+            
+            // Join each group individually
+            for (GroupRepresentation group : groups) {
+                userResource.joinGroup(group.getId());
+                log.debug("Added user {} to group {}", userId, group.getName());
+            }
+            
+            log.debug("All groups successfully assigned to user: {}", userId);
             return true;
-
         } catch (Exception e) {
-            log.error("Error assigning roles to user: {}", userId, e);
+            log.error("Error assigning groups to user: {}", userId, e);
             return false;
         }
     }

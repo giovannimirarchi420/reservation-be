@@ -1,7 +1,6 @@
 package it.polito.cloudresources.be.util;
 
 import java.util.regex.Pattern;
-import java.util.regex.Matcher;
 import org.springframework.stereotype.Component;
 
 /**

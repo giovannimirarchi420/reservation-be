@@ -78,9 +78,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/users/me", "/users/me/**").authenticated()
-                        .requestMatchers("/resources/**").hasAnyRole("USER", "FEDERATION_ADMIN", "GLOBAL_ADMIN")
-                        .requestMatchers("/resource-types/**").hasAnyRole("USER", "FEDERATION_ADMIN", "GLOBAL_ADMIN")
-                        .requestMatchers("/users/**").hasAnyRole("FEDERATION_ADMIN", "GLOBAL_ADMIN")
+                        .requestMatchers("/resources/**").authenticated()
+                        .requestMatchers("/resource-types/**").authenticated()
+                        .requestMatchers("/users/**").authenticated()
+                        .requestMatchers("/events/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
