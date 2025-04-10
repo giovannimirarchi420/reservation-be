@@ -2,13 +2,23 @@ package it.polito.cloudresources.be.mapper;
 
 import it.polito.cloudresources.be.dto.ResourceTypeDTO;
 import it.polito.cloudresources.be.model.ResourceType;
+import it.polito.cloudresources.be.service.KeycloakService;
+import org.keycloak.representations.idm.GroupRepresentation;
 import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 /**
  * Mapper for converting between ResourceType and ResourceTypeDTO objects
  */
 @Component
 public class ResourceTypeMapper implements EntityMapper<ResourceTypeDTO, ResourceType> {
+    
+    private final KeycloakService keycloakService;
+    
+    public ResourceTypeMapper(KeycloakService keycloakService) {
+        this.keycloakService = keycloakService;
+    }
     
     @Override
     public ResourceType toEntity(ResourceTypeDTO dto) {
@@ -36,6 +46,12 @@ public class ResourceTypeMapper implements EntityMapper<ResourceTypeDTO, Resourc
         dto.setName(entity.getName());
         dto.setColor(entity.getColor());
         dto.setSiteId(entity.getSiteId());
+        
+        // Set site name from Keycloak
+        if (entity.getSiteId() != null) {
+            Optional<GroupRepresentation> site = keycloakService.getGroupById(entity.getSiteId());
+            site.ifPresent(group -> dto.setSiteName(group.getName()));
+        }
         
         return dto;
     }

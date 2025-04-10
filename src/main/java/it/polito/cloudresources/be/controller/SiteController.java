@@ -171,11 +171,11 @@ public class SiteController {
             siteService.removeUserFromSite(userId, id, currentUserId);
             return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
         } catch (AccessDeniedException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            return utils.createErrorResponse(HttpStatus.FORBIDDEN, e.getMessage());
         } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
         }
     }
     

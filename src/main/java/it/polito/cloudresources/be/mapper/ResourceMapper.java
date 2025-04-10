@@ -5,8 +5,13 @@ import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.repository.ResourceRepository;
 import it.polito.cloudresources.be.repository.ResourceTypeRepository;
+import it.polito.cloudresources.be.service.KeycloakService;
 import jakarta.persistence.EntityNotFoundException;
+import lombok.AllArgsConstructor;
 
+import org.keycloak.representations.idm.GroupRepresentation;
+
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
@@ -15,15 +20,12 @@ import org.springframework.stereotype.Component;
  * Mapper for converting between Resource and ResourceDTO objects
  */
 @Component
+@AllArgsConstructor
 public class ResourceMapper implements EntityMapper<ResourceDTO, Resource> {
     
     private final ResourceTypeRepository resourceTypeRepository;
     private final ResourceRepository resourceRepository;
-    
-    public ResourceMapper(ResourceTypeRepository resourceTypeRepository, ResourceRepository resourceRepository) {
-        this.resourceTypeRepository = resourceTypeRepository;
-        this.resourceRepository = resourceRepository;
-    }
+    private final KeycloakService keycloakService;
     
     @Override
     public Resource toEntity(ResourceDTO dto) {
@@ -74,14 +76,22 @@ public class ResourceMapper implements EntityMapper<ResourceDTO, Resource> {
             dto.setTypeColor(entity.getType().getColor());
         }
         
+        // Set parent information
         if (entity.getParent() != null) {
             dto.setParentId(entity.getParent().getId());
             dto.setParentName(entity.getParent().getName());
         }
 
+        // Set sub-resources
         dto.setSubResourceIds(entity.getSubResources().stream()
             .map(Resource::getId)
             .collect(Collectors.toList()));
+        
+        // Set site name from Keycloak
+        if (entity.getSiteId() != null) {
+            Optional<GroupRepresentation> site = keycloakService.getGroupById(entity.getSiteId());
+            site.ifPresent(group -> dto.setSiteName(group.getName()));
+        }
         
         return dto;
     }

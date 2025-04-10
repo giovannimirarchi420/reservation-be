@@ -225,9 +225,9 @@ public class SiteService {
         if (userId.equals(requesterUserId) && keycloakService.isUserSiteAdmin(requesterUserId, siteId)) {
             throw new IllegalStateException("Sites admins cannot remove themselves from their site");
         }
-
-        keycloakService.removeSiteAdminRole(userId, siteId, requesterUserId);
-
+        
+        keycloakService.removeUserFromSite(userId, siteId);
+        
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.DELETE,
                 new AuditLog.LogEntity("site-USER", siteId),
