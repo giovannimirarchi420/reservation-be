@@ -65,4 +65,9 @@ public interface WebhookConfigRepository extends JpaRepository<WebhookConfig, Lo
     List<WebhookConfig> findRelevantWebhooksForResourceEvent(
        @Param("resourceId") Long resourceId, 
        @Param("eventType") WebhookEventType eventType);
+
+    /**
+     * Find webhooks by site IDs
+     */
+    List<WebhookConfig> findBySiteId(String siteId);
 }

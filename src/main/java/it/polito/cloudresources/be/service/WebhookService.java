@@ -184,23 +184,17 @@ public class WebhookService {
             webhooks = webhookConfigRepository.findAll();
         } else {
             // Get sites where the user is an admin
-            List<String> adminSites = keycloakService.getUserAdminGroups(userId);
-            
+            List<String> adminSites = keycloakService.getUserAdminGroupIds(userId);
+            log.debug("userId: {}, adminSites: {}", userId, adminSites);
             // Get webhooks for resources in these sites
-            List<WebhookConfig> resourceWebhooks = adminSites.stream()
-                    .flatMap(siteId -> webhookConfigRepository.findByResourceSiteIdAndEnabled(siteId, true).stream())
+
+            webhooks = adminSites.stream()
+                    .flatMap(siteId -> webhookConfigRepository.findBySiteId(siteId).stream())
                     .toList();
-                    
-            // Get webhooks for resource types in these sites
-            List<WebhookConfig> resourceTypeWebhooks = adminSites.stream()
-                    .flatMap(siteId -> webhookConfigRepository.findByResourceTypeSiteIdAndEnabled(siteId, true).stream())
-                    .toList();
-                    
-            // Combine all results
-            webhooks = resourceWebhooks;
-            webhooks.addAll(resourceTypeWebhooks);
+            log.debug(userId + " webhooks: " + webhooks);
+                
         }
-        
+        log.debug("Returned webhooks for user {}: {}", userId, webhooks);
         return webhooks.stream()
                 .map(webhookMapper::toDto)
                 .toList();

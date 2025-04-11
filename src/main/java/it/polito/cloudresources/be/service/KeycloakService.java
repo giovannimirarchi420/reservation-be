@@ -364,7 +364,7 @@ public class KeycloakService {
     public Optional<GroupRepresentation> getGroupByName(String groupName) {
         try {
             return getRealmResource().groups().groups().stream()
-                    .filter(group -> group.getName() == groupName)
+                    .filter(group -> group.getName().equals(groupName))
                     .findFirst();
         } catch (Exception e) {
             log.error("Error fetching site", e);
@@ -676,6 +676,19 @@ public class KeycloakService {
             log.error("Error getting admin sites for user {}", userId, e);
             return new ArrayList<>();
         }
+    }
+
+    // Add to KeycloakService
+    public List<String> getUserAdminGroupIds(String userId) {
+        // First get the site names
+        List<String> siteNames = getUserAdminGroups(userId);
+        log.debug("Sites: " + siteNames);
+        // Then convert to IDs
+        return siteNames.stream()
+            .map(siteName -> getGroupByName(siteName))
+            .filter(Optional::isPresent)
+            .map(group -> group.get().getId())
+            .collect(Collectors.toList());
     }
 
     /**
