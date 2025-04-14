@@ -35,7 +35,7 @@ public class AuditLog {
     @Column(name = "log_type", nullable = false, length = 50)
     private AuditLog.LogType logType;
 
-    @Column(name = "details")
+    @Column(name = "details", length=4000)
     private String details;
 
     @Column(name = "entity_type", length = 50)

@@ -74,14 +74,18 @@ public class SiteService {
     /**
      * Create new site
      */
-    public SiteDTO createSite(SiteDTO siteDTO, String userId) {
-        String siteId = keycloakService.setupNewKeycloakGroup(siteDTO.getName(), siteDTO.getDescription());
+    public SiteDTO createSite(SiteDTO siteDTO, String userId, boolean privateSite) {
+        String siteId = keycloakService.setupNewKeycloakGroup(siteDTO.getName(), siteDTO.getDescription(), privateSite);
 
         if(Objects.isNull(siteId)) {
             throw new RuntimeException("An error occurred creating the site, please try again");
         }
 
         keycloakService.assignSiteAdminRole(userId, siteDTO.getName());
+
+        // If private site, no user will be added, but at least the creator must be added in order to operate on it
+        if(privateSite)
+            keycloakService.addUserToKeycloakGroup(userId, siteId);
 
         // Log the action
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,

@@ -228,7 +228,7 @@ public class MockKeycloakService extends KeycloakService {
     }
 
     @Override
-    public String setupNewKeycloakGroup(String name, String description) {
+    public String setupNewKeycloakGroup(String name, String description, boolean privateSite) {
         String siteId = UUID.randomUUID().toString();
 
         GroupRepresentation group = new GroupRepresentation();

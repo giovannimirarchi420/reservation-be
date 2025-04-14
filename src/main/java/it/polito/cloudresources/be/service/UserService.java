@@ -78,7 +78,9 @@ public class UserService {
             throw new EntityNotFoundException("User not found");
         }
 
-        return userMapper.toDto(userRepresentation.get());
+        UserDTO userDto = userMapper.toDto(userRepresentation.get());
+        userDto.setSshPublicKey(keycloakService.getUserSshKey(id).orElse(null));
+        return userDto;
     }
 
     /**

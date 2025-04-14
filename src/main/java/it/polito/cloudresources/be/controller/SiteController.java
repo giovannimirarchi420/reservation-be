@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -76,10 +77,12 @@ public class SiteController {
     @PostMapping
     @Operation(summary = "Create site", description = "Creates a new site (global admin or site admin only)")
     public ResponseEntity<SiteDTO> createSite (
-            @Valid @RequestBody SiteDTO siteDTO, Authentication authentication) {
+            @Valid @RequestBody SiteDTO siteDTO, 
+            Authentication authentication, 
+            @RequestParam(required = false, defaultValue = "false") boolean isPrivate) {
         try {
             String userId = utils.getCurrentUserKeycloakId(authentication);
-            SiteDTO createdSite = siteService.createSite(siteDTO, userId);
+            SiteDTO createdSite = siteService.createSite(siteDTO, userId, isPrivate);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdSite);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();

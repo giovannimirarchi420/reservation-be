@@ -39,12 +39,12 @@ public class UserMapper {
         dto.setRoles(new HashSet<>(roles));
 
         // Get avatar
-        keycloakService.getUserAvatar(userRepresentation.getId())
+        /* keycloakService.getUserAvatar(userRepresentation.getId())
             .ifPresent(dto::setAvatar);
 
         // Get SSH key
         keycloakService.getUserSshKey(userRepresentation.getId())
-            .ifPresent(dto::setSshPublicKey);
+            .ifPresent(dto::setSshPublicKey); */
         
         return dto;
     }

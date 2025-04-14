@@ -207,9 +207,22 @@ public class ResourceService {
         }
 
         ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
-        List<Event> futureEvents = eventRepository.findByResourceId(id).stream()
+
+        List<Event> allEvents = eventRepository.findByResourceId(id).stream()
+                .collect(Collectors.toList());
+
+        List<Event> futureEvents = allEvents.stream()
                 .filter(event -> event.getEnd().isAfter(now))
                 .collect(Collectors.toList());
+
+        List<Event> pastEvents = allEvents;
+        pastEvents.removeAll(futureEvents);
+
+        if (!pastEvents.isEmpty()) {
+            for (Event event : pastEvents) {
+                eventRepository.delete(event);
+            }
+        }
 
         // Notify users with future bookings
         if (!futureEvents.isEmpty()) {

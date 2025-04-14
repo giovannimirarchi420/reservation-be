@@ -39,6 +39,8 @@ public interface ResourceRepository extends JpaRepository<Resource, Long> {
     
     List<Resource> findByParentIsNull();
 
+    List<Resource> findByParentId(Long parentId);
+
     List<Resource> findBySiteId(String siteId);
     
     List<Resource> findBySiteIdIn(List<String> siteIds);

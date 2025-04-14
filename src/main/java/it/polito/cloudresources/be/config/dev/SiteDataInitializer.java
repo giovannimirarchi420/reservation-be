@@ -42,9 +42,9 @@ public class SiteDataInitializer {
             keycloakService.ensureRealmRoles("GLOBAL_ADMIN", "USER");
 
             // Create sample sites
-            String poliToId = keycloakService.setupNewKeycloakGroup("polito", "Turin Technical University");
-            String uniRomaId = keycloakService.setupNewKeycloakGroup("uniroma", "Rome University");
-            String uniMiId = keycloakService.setupNewKeycloakGroup("unimi", "Milan University");
+            String poliToId = keycloakService.setupNewKeycloakGroup("polito", "Turin Technical University", false);
+            String uniRomaId = keycloakService.setupNewKeycloakGroup("uniroma", "Rome University", false);
+            String uniMiId = keycloakService.setupNewKeycloakGroup("unimi", "Milan University", false);
 
             log.info("Created sites with IDs: {}, {}, {}", poliToId, uniRomaId, uniMiId);
 

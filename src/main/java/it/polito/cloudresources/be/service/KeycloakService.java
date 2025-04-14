@@ -15,6 +15,10 @@ import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -24,6 +28,7 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced service for interacting with Keycloak as the single source of truth for user data
+ * Now with caching to improve performance and reduce API calls to Keycloak
  */
 @Service
 @Profile("!dev") // Active in all profiles except dev
@@ -32,6 +37,23 @@ public class KeycloakService {
 
     public static final String ATTR_SSH_KEY = "ssh_key";
     public static final String ATTR_AVATAR = "avatar";
+
+    // Cache names
+    public static final String USERS_CACHE = "keycloak_users";
+    public static final String USER_BY_ID_CACHE = "keycloak_users_by_id";
+    public static final String USER_BY_USERNAME_CACHE = "keycloak_users_by_username";
+    public static final String USER_BY_EMAIL_CACHE = "keycloak_users_by_email";
+    public static final String USER_ROLES_CACHE = "keycloak_user_roles";
+    public static final String USER_ATTRIBUTES_CACHE = "keycloak_user_attributes";
+    public static final String USER_GROUPS_CACHE = "keycloak_user_groups";
+    public static final String GROUPS_CACHE = "keycloak_groups";
+    public static final String GROUP_BY_ID_CACHE = "keycloak_groups_by_id";
+    public static final String GROUP_BY_NAME_CACHE = "keycloak_groups_by_name";
+    public static final String GROUP_MEMBERS_CACHE = "keycloak_group_members";
+    public static final String USERS_IN_GROUP_CACHE = "keycloak_users_in_group";
+    public static final String USER_ADMIN_GROUPS_CACHE = "keycloak_user_admin_groups";
+    public static final String USER_SITES_CACHE = "keycloak_user_sites";
+    public static final String USER_BY_ROLE_CACHE = "keycloak_users_by_role";
 
     @Value("${keycloak.auth-server-url}")
     private String authServerUrl;
@@ -75,8 +97,10 @@ public class KeycloakService {
     /**
      * Get all Keycloak users
      */
+    @Cacheable(value = USERS_CACHE, unless = "#result.isEmpty()")
     public List<UserRepresentation> getUsers() {
         try {
+            log.debug("Cache miss: Fetching all users from Keycloak");
             return getRealmResource().users().list();
         } catch (Exception e) {
             log.error("Error fetching users from Keycloak", e);
@@ -87,8 +111,10 @@ public class KeycloakService {
     /**
      * Get a user by username
      */
+    @Cacheable(value = USER_BY_USERNAME_CACHE, key = "#username", unless = "#result == null")
     public Optional<UserRepresentation> getUserByUsername(String username) {
         try {
+            log.debug("Cache miss: Fetching user by username '{}'", username);
             List<UserRepresentation> users = getRealmResource().users().search(username, true);
             return users.isEmpty() ? Optional.empty() : Optional.of(users.get(0));
         } catch (Exception e) {
@@ -100,8 +126,10 @@ public class KeycloakService {
     /**
      * Get a user by email
      */
+    @Cacheable(value = USER_BY_EMAIL_CACHE, key = "#email", unless = "#result == null")
     public Optional<UserRepresentation> getUserByEmail(String email) {
         try {
+            log.debug("Cache miss: Fetching user by email '{}'", email);
             List<UserRepresentation> users = getRealmResource().users().search(null, null, null, email, 0, 1);
             return users.isEmpty() ? Optional.empty() : Optional.of(users.get(0));
         } catch (Exception e) {
@@ -113,8 +141,10 @@ public class KeycloakService {
     /**
      * Get a user by ID
      */
+    @Cacheable(value = USER_BY_ID_CACHE, key = "#id", unless = "#result == null")
     public Optional<UserRepresentation> getUserById(String id) {
         try {
+            log.debug("Cache miss: Fetching user by ID '{}'", id);
             UserRepresentation user = getRealmResource().users().get(id).toRepresentation();
             return Optional.ofNullable(user);
         } catch (Exception e) {
@@ -132,6 +162,10 @@ public class KeycloakService {
      * @return the ID of the created user, or null if creation failed
      */
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = USERS_CACHE, allEntries = true),
+            @CacheEvict(value = USER_BY_ROLE_CACHE, allEntries = true)
+    })
     public String createUser(UserDTO userDTO, String password, Set<String> roles) {
         try {
             log.debug("Attempting to create user: username={}, email={}, firstName={}, lastName={}",
@@ -172,6 +206,15 @@ public class KeycloakService {
      * Update an existing user in Keycloak
      */
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = USER_BY_ID_CACHE, key = "#userId"),
+            @CacheEvict(value = USERS_CACHE, allEntries = true),
+            @CacheEvict(value = USER_ATTRIBUTES_CACHE, key = "#userId + '_*'"),
+            @CacheEvict(value = USER_ROLES_CACHE, key = "#userId"),
+            @CacheEvict(value = USER_BY_USERNAME_CACHE, allEntries = true),
+            @CacheEvict(value = USER_BY_EMAIL_CACHE, allEntries = true),
+            @CacheEvict(value = USER_BY_ROLE_CACHE, allEntries = true)
+    })
     public boolean updateUser(String userId, Map<String, Object> attributes) {
         try {
             UserResource userResource = getRealmResource().users().get(userId);
@@ -249,6 +292,20 @@ public class KeycloakService {
     /**
      * Delete a user from Keycloak
      */
+    @Caching(evict = {
+            @CacheEvict(value = USER_BY_ID_CACHE, key = "#userId"),
+            @CacheEvict(value = USERS_CACHE, allEntries = true),
+            @CacheEvict(value = USER_ATTRIBUTES_CACHE, key = "#userId + '_*'"),
+            @CacheEvict(value = USER_ROLES_CACHE, key = "#userId"),
+            @CacheEvict(value = USER_GROUPS_CACHE, key = "#userId"),
+            @CacheEvict(value = USER_ADMIN_GROUPS_CACHE, key = "#userId"),
+            @CacheEvict(value = USER_SITES_CACHE, key = "#userId"),
+            @CacheEvict(value = USER_BY_USERNAME_CACHE, allEntries = true),
+            @CacheEvict(value = USER_BY_EMAIL_CACHE, allEntries = true),
+            @CacheEvict(value = USERS_IN_GROUP_CACHE, allEntries = true),
+            @CacheEvict(value = GROUP_MEMBERS_CACHE, allEntries = true),
+            @CacheEvict(value = USER_BY_ROLE_CACHE, allEntries = true)
+    })
     public boolean deleteUser(String userId) {
         try {
             getRealmResource().users().get(userId).remove();
@@ -263,8 +320,10 @@ public class KeycloakService {
     /**
      * Get roles of a user
      */
+    @Cacheable(value = USER_ROLES_CACHE, key = "#userId")
     public List<String> getUserRoles(String userId) {
         try {
+            log.debug("Cache miss: Fetching roles for user '{}'", userId);
             List<RoleRepresentation> roles = getRealmResource().users().get(userId).roles().realmLevel().listAll();
             return roles.stream().map(RoleRepresentation::getName).toList();
         } catch (Exception e) {
@@ -276,8 +335,10 @@ public class KeycloakService {
     /**
      * Get specific attribute for a user
      */
+    @Cacheable(value = USER_ATTRIBUTES_CACHE, key = "#userId + '_' + #attributeName")
     public Optional<String> getUserAttribute(String userId, String attributeName) {
         try {
+            log.debug("Cache miss: Fetching attribute '{}' for user '{}'", attributeName, userId);
             UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
             Map<String, List<String>> attributes = user.getAttributes();
             
@@ -329,8 +390,10 @@ public class KeycloakService {
     /**
      * Find users by role
      */
+    @Cacheable(value = USER_BY_ROLE_CACHE, key = "#roleName")
     public List<UserRepresentation> getUsersByRole(String roleName) {
         try {
+            log.debug("Cache miss: Fetching users by role '{}'", roleName);
             List<UserRepresentation> allUsers = getUsers();
             List<UserRepresentation> usersWithRole = new ArrayList<>();
             
@@ -349,12 +412,16 @@ public class KeycloakService {
         }
     }
 
+    @Cacheable(value = GROUPS_CACHE)
     public List<GroupRepresentation> getAllGroups() {
+        log.debug("Cache miss: Fetching all groups");
         return getRealmResource().groups().groups();
     }
     
+    @Cacheable(value = GROUP_BY_ID_CACHE, key = "#groupId"/*,  unless = "#result.isEmpty()" */)
     public Optional<GroupRepresentation> getGroupById(String groupId) {
         try {
+            log.debug("Cache miss: Fetching group by ID '{}'", groupId);
             GroupRepresentation group = getRealmResource().groups().group(groupId).toRepresentation();
             return Optional.of(group);
         } catch (Exception e) {
@@ -363,8 +430,10 @@ public class KeycloakService {
         }
     }
 
+    @Cacheable(value = GROUP_BY_NAME_CACHE, key = "#groupName"/*,  unless = "#result.isEmpty()" */)
     public Optional<GroupRepresentation> getGroupByName(String groupName) {
         try {
+            log.debug("Cache miss: Fetching group by name '{}'", groupName);
             return getRealmResource().groups().groups().stream()
                     .filter(group -> group.getName().equals(groupName))
                     .findFirst();
@@ -373,9 +442,14 @@ public class KeycloakService {
             return Optional.empty();
         }
     }
+    
     /**
      * Create a site from a GroupRepresentation
      */
+    @Caching(evict = {
+            @CacheEvict(value = GROUPS_CACHE, allEntries = true),
+            @CacheEvict(value = GROUP_BY_NAME_CACHE, allEntries = true)
+    })
     public String setupNewKeycloakGroup(GroupRepresentation group) {
         try {
             Response response = getRealmResource().groups().add(group);
@@ -396,7 +470,16 @@ public class KeycloakService {
     /**
      * Creates a new site
      */
-    public String setupNewKeycloakGroup(String name, String description) {
+    @Caching(evict = {        
+        @CacheEvict(value = USERS_CACHE, allEntries = true),
+        @CacheEvict(value = USER_GROUPS_CACHE, allEntries = true),
+        @CacheEvict(value = USER_SITES_CACHE, allEntries = true),
+        @CacheEvict(value = USERS_IN_GROUP_CACHE, allEntries = true),
+        @CacheEvict(value = GROUP_MEMBERS_CACHE, allEntries = true),
+        @CacheEvict(value = GROUPS_CACHE, allEntries = true),
+        @CacheEvict(value = GROUP_BY_NAME_CACHE, allEntries = true)
+    })
+    public String setupNewKeycloakGroup(String name, String description, boolean privateSite) {
         GroupRepresentation group = new GroupRepresentation();
         group.setName(name);
 
@@ -412,21 +495,27 @@ public class KeycloakService {
         // Create the site admin role
         if (groupId != null) {
             createSiteAdminRole(name);
-        }
-
-        // When a new site is created, add all existing users to it
-        if (groupId != null) {
-            List<UserRepresentation> allUsers = getUsers();
-            for (UserRepresentation user : allUsers) {
-                addUserToKeycloakGroup(user.getId(), groupId);
+            log.debug("Creating group in private mode: {}", privateSite);
+            if(!privateSite) {
+                //Add all user to the site
+                List<UserRepresentation> allUsers = getUsers();
+                for (UserRepresentation user : allUsers) {
+                    addUserToKeycloakGroup(user.getId(), groupId);
+                }
             }
         }
+
         return groupId;
     }
     
     /**
      * Update an existing site
      */
+    @Caching(evict = {
+            @CacheEvict(value = GROUP_BY_ID_CACHE, key = "#groupId"),
+            @CacheEvict(value = GROUPS_CACHE, allEntries = true),
+            @CacheEvict(value = GROUP_BY_NAME_CACHE, allEntries = true)
+    })
     public boolean updateGroup(String groupId, GroupRepresentation updatedGroup) {
         try {
             // First get the current group to ensure it exists
@@ -455,6 +544,16 @@ public class KeycloakService {
      * Delete a site
      * @param groupId
      */
+    @Caching(evict = {
+            @CacheEvict(value = GROUP_BY_ID_CACHE, key = "#groupId"),
+            @CacheEvict(value = GROUPS_CACHE, allEntries = true),
+            @CacheEvict(value = GROUP_BY_NAME_CACHE, allEntries = true),
+            @CacheEvict(value = GROUP_MEMBERS_CACHE, allEntries = true),
+            @CacheEvict(value = USERS_IN_GROUP_CACHE, key = "#groupId"),
+            @CacheEvict(value = USER_GROUPS_CACHE, allEntries = true),
+            @CacheEvict(value = USER_ADMIN_GROUPS_CACHE, allEntries = true),
+            @CacheEvict(value = USER_SITES_CACHE, allEntries = true)
+    })
     public boolean deleteGroup(String groupId) {
         try {
             // Check if the site exists
@@ -482,8 +581,10 @@ public class KeycloakService {
     /**
      * Check if a user is a member of a specific site (group)
      */
+    @Cacheable(value = GROUP_MEMBERS_CACHE, key = "#groupId + '_' + #userId")
     public boolean isUserInGroup(String userId, String groupId) {
         try {
+            log.debug("Cache miss: Checking if user '{}' is in group '{}'", userId, groupId);
             UserResource userResource = getRealmResource().users().get(userId);
             List<GroupRepresentation> userGroups = userResource.groups();
             
@@ -503,6 +604,12 @@ public class KeycloakService {
      * @param groupId the site ID
      * @return true if user was added to site successfully, false otherwise
      */
+    @Caching(evict = {
+            @CacheEvict(value = GROUP_MEMBERS_CACHE, key = "#groupId + '_' + #userId"),
+            @CacheEvict(value = USERS_IN_GROUP_CACHE, key = "#groupId"),
+            @CacheEvict(value = USER_GROUPS_CACHE, key = "#userId"),
+            @CacheEvict(value = USER_SITES_CACHE, key = "#userId")
+    })
     public boolean addUserToKeycloakGroup(String userId, String groupId) {
         try {
             // Check if user is already in the site
@@ -523,8 +630,6 @@ public class KeycloakService {
         }
     }
 
-
-
     /**
      * Generates a standardized site admin role name
      */
@@ -539,14 +644,13 @@ public class KeycloakService {
         try {
             String roleName = getSiteAdminRoleName(siteName);
 
-            // Create the role if it doesn't exist
-            if (getRealmResource().roles().get(roleName).toRepresentation() == null) {
-                RoleRepresentation role = new RoleRepresentation();
-                role.setName(roleName);
-                role.setDescription("User role for site: " + siteName);
-                getRealmResource().roles().create(role);
-                log.info("Created site user role: {}", roleName);
-            }
+            RoleRepresentation role = new RoleRepresentation();
+            role.setName(roleName);
+            role.setDescription("User role for site: " + siteName);
+            getRealmResource().roles().create(role);
+            
+            log.info("Created site user role: {}", roleName);
+            
             return true;
         } catch (Exception e) {
             log.error("Error creating site user role: {}", e.getMessage(), e);
@@ -557,11 +661,9 @@ public class KeycloakService {
     /**
      * Assigns the site admin role to a user
      */
+    @CacheEvict(value = USER_ROLES_CACHE, key = "#userId")
     public boolean assignSiteAdminRole(String userId, String siteName) {
         try {
-            // First ensure the role exists
-            createSiteAdminRole(siteName);
-
             // Then assign it to the user
             String roleName = getSiteAdminRoleName(siteName);
             return assignRoleToUser(userId, roleName);
@@ -578,6 +680,10 @@ public class KeycloakService {
     /**
      * Removes the site admin role from a user
      */
+    @CacheEvict(value = {
+            USER_ROLES_CACHE, 
+            USER_ADMIN_GROUPS_CACHE
+    }, key = "#userId")
     public void removeSiteAdminRole(String userId, String siteId, String requesterUserId) throws AccessDeniedException {
         if (!hasGlobalAdminRole(requesterUserId) &&
                 !isUserSiteAdmin(requesterUserId, siteId)) {
@@ -600,6 +706,7 @@ public class KeycloakService {
     /**
      * Checks if a user is an admin of a site
      */
+    @Cacheable(value = "keycloak_site_admin_status", key = "#userId + '_' + #siteId")
     public boolean isUserSiteAdmin(String userId, String siteId) {
         // Global admins are implicitly site admins
         if (hasGlobalAdminRole(userId)) {
@@ -607,6 +714,7 @@ public class KeycloakService {
         }
 
         try {
+            log.debug("Cache miss: Checking if user '{}' is admin for site '{}'", userId, siteId);
             // Get the site name for the site ID
             Optional<GroupRepresentation> site = getGroupById(siteId);
             if (site.isEmpty()) {
@@ -624,40 +732,12 @@ public class KeycloakService {
     }
 
     /**
-     * Make a user a site admin
-     */
-    public boolean makeSiteAdmin(String userId, String siteId, String requesterUserId) throws AccessDeniedException {
-        if (!hasGlobalAdminRole(requesterUserId) &&
-                !isUserSiteAdmin(requesterUserId, siteId)) {
-            throw new AccessDeniedException("User can't add new users to this site");
-        }
-
-        try {
-
-            // First ensure the user is a member of the site
-            if (!isUserInGroup(userId, siteId)) {
-                addUserToKeycloakGroup(userId, siteId);
-            }
-
-            // Get the site name
-            Optional<GroupRepresentation> site = getGroupById(siteId);
-            if (site.isEmpty()) {
-                return false;
-            }
-
-            // Assign the site admin role
-            return assignSiteAdminRole(userId, site.get().getName());
-        } catch (Exception e) {
-            log.error("Error making user {} admin of site {}: {}", userId, siteId, e.getMessage(), e);
-            return false;
-        }
-    }
-
-    /**
      * Get sites where user is an admin
      */
+    @Cacheable(value = USER_ADMIN_GROUPS_CACHE, key = "#userId")
     public List<String> getUserAdminGroups(String userId) {
         try {
+            log.debug("Cache miss: Fetching admin groups for user '{}'", userId);
             // First check if the user exists
             UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
             
@@ -681,6 +761,7 @@ public class KeycloakService {
     }
 
     // Add to KeycloakService
+    @Cacheable(value = "keycloak_user_admin_group_ids", key = "#userId")
     public List<String> getUserAdminGroupIds(String userId) {
         // First get the site names
         List<String> siteNames = getUserAdminGroups(userId);
@@ -727,6 +808,7 @@ public class KeycloakService {
      * Get users who are members of a specific site (group)
      * @param groupId
      */
+    @Cacheable(value = USERS_IN_GROUP_CACHE, key = "#groupId", unless = "#result.isEmpty()")
     public List<UserRepresentation> getUsersInGroup(String groupId) {
         try {
             // Get the site (group) resource
@@ -746,6 +828,13 @@ public class KeycloakService {
     /**
      * Remove a user from a site (group)
      */
+    @Caching(evict = {        
+        @CacheEvict(value = USERS_CACHE, allEntries = true),
+        @CacheEvict(value = USER_GROUPS_CACHE, key = "#userId"),
+        @CacheEvict(value = USER_SITES_CACHE, key = "#userId"),
+        @CacheEvict(value = USERS_IN_GROUP_CACHE, allEntries = true),
+        @CacheEvict(value = GROUP_MEMBERS_CACHE, allEntries = true),
+    })
     public boolean removeUserFromSite(String userId, String siteId) {
         try {
             // Check if user is actually in the site
@@ -815,6 +904,36 @@ public class KeycloakService {
         } catch (Exception e) {
             log.error("Error retrieving site groups for user {}: {}", userId, e.getMessage(), e);
             return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Make a user a site admin
+     */
+    public boolean makeSiteAdmin(String userId, String siteId, String requesterUserId) throws AccessDeniedException {
+        if (!hasGlobalAdminRole(requesterUserId) &&
+                !isUserSiteAdmin(requesterUserId, siteId)) {
+            throw new AccessDeniedException("User can't add new users to this site");
+        }
+
+        try {
+
+            // First ensure the user is a member of the site
+            if (!isUserInGroup(userId, siteId)) {
+                addUserToKeycloakGroup(userId, siteId);
+            }
+
+            // Get the site name
+            Optional<GroupRepresentation> site = getGroupById(siteId);
+            if (site.isEmpty()) {
+                return false;
+            }
+
+            // Assign the site admin role
+            return assignSiteAdminRole(userId, site.get().getName());
+        } catch (Exception e) {
+            log.error("Error making user {} admin of site {}: {}", userId, siteId, e.getMessage(), e);
+            return false;
         }
     }
 
