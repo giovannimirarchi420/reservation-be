@@ -6,9 +6,13 @@ import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
+import it.polito.cloudresources.be.model.WebhookConfig;
 import it.polito.cloudresources.be.model.WebhookEventType;
+import it.polito.cloudresources.be.model.WebhookLog;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
+import it.polito.cloudresources.be.repository.WebhookConfigRepository;
+import it.polito.cloudresources.be.repository.WebhookLogRepository;
 import it.polito.cloudresources.be.util.DateTimeUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +47,9 @@ public class ResourceService {
     private final ResourceMapper resourceMapper;
     private final WebhookService webhookService;
     private final DateTimeUtils dateTimeUtils;
+    private final WebhookLogRepository webhookLogRepository;
+    private final WebhookConfigRepository webhookConfigRepository;
+
 
     public List<ResourceDTO> getAllResources(String userId) {
         if (keycloakService.hasGlobalAdminRole(userId)) {
@@ -203,35 +211,24 @@ public class ResourceService {
         Resource resource = resourceOpt.get();
 
         if (!canUpdateResourceInSite(userId, resource.getSiteId())) {
-            throw new AccessDeniedException("You don't have permission to update resources in this site");
+            throw new AccessDeniedException("You don't have permission to delete resources in this site");
         }
 
         ZonedDateTime now = dateTimeUtils.getCurrentDateTime();
 
-        List<Event> allEvents = eventRepository.findByResourceId(id).stream()
-                .collect(Collectors.toList());
-
-        List<Event> futureEvents = allEvents.stream()
-                .filter(event -> event.getEnd().isAfter(now))
-                .collect(Collectors.toList());
-
-        List<Event> pastEvents = allEvents;
-        pastEvents.removeAll(futureEvents);
-
-        if (!pastEvents.isEmpty()) {
-            for (Event event : pastEvents) {
-                eventRepository.delete(event);
-            }
-        }
-
+        // 1. First handle all events related to this resource
+        List<Event> allEvents = eventRepository.findByResourceId(id);
+        
         // Notify users with future bookings
-        if (!futureEvents.isEmpty()) {
+        if (!allEvents.isEmpty()) {
             Set<String> keycloakIdsToNotify = new HashSet<>();
 
-            // Collect all unique users with future bookings
-            // Delete all future bookings
-            for (Event event : futureEvents) {
-                keycloakIdsToNotify.add(event.getKeycloakId());
+            for (Event event : allEvents) {
+                // Only notify for future events
+                if (event.getEnd().isAfter(now)) {
+                    keycloakIdsToNotify.add(event.getKeycloakId());
+                }
+                // Delete the event
                 eventRepository.delete(event);
             }
 
@@ -245,21 +242,70 @@ public class ResourceService {
             }
         }
 
-        auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
-                AuditLog.LogAction.DELETE,
-                new AuditLog.LogEntity("RESOURCE", id.toString()),
-                "Admin " + userId + " deleted resource: " + resource);
-
-        // Delete the resource
-        resourceRepository.deleteById(id);
-
-        // Notify admins about deletion
-        notificationService.createSystemNotification(
-                "Resource deleted",
-                "Resource " + resource.getName() + " has been deleted from the system"
-        );
+        
+        // 2. Get all sub-resources to delete them first (recursive deletion)
+        List<Resource> subResources = new ArrayList<>(resourceRepository.findByParentId(id));
+        
+        // Delete all sub-resources first
+        for (Resource subResource : subResources) {
+            try {
+                // Recursive call to delete sub-resources
+                deleteResource(subResource.getId(), userId);
+            } catch (Exception e) {
+                log.error("Error deleting sub-resource {}: {}", subResource.getId(), e.getMessage());
+            }
+        }
+        
+        // 3. Handle webhook logs related to this resource
+        try {
+            List<WebhookLog> webhookLogs = webhookLogRepository.findByResourceId(id);
+            if (!webhookLogs.isEmpty()) {
+                log.info("Deleting {} webhook logs for resource {}", webhookLogs.size(), id);
+                webhookLogRepository.deleteAll(webhookLogs);
+            }
+        } catch (Exception e) {
+            log.error("Error deleting webhook logs for resource {}: {}", id, e.getMessage());
+        }
+        
+        // 4. Handle webhook configs that reference this resource
+        try {
+            List<WebhookConfig> webhookConfigs = webhookConfigRepository.findByResourceId(id);
+            if (!webhookConfigs.isEmpty()) {
+                log.info("Updating {} webhook configs for resource {}", webhookConfigs.size(), id);
+                
+                // Instead of deleting, set the resource to null (if the webhook is for this resource specifically)
+                for (WebhookConfig webhookConfig : webhookConfigs) {
+                    webhookConfig.setResource(null);
+                    webhookConfigRepository.save(webhookConfig);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error updating webhook configs for resource {}: {}", id, e.getMessage());
+        }
+        
+        // 5. Finally delete the resource itself
+        try {
+            resourceRepository.delete(resource);
+            
+            auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
+                    AuditLog.LogAction.DELETE,
+                    new AuditLog.LogEntity("RESOURCE", id.toString()),
+                    "Admin " + userId + " deleted resource: " + resource);
+            
+            // Notify admins about deletion
+            notificationService.createSystemNotification(
+                    "Resource deleted",
+                    "Resource " + resource.getName() + " has been deleted from the system"
+            );
+            
+            // Process webhook event for resource deletion
+            webhookService.processResourceEvent(WebhookEventType.RESOURCE_DELETED, resource, resource);
+            
+        } catch (Exception e) {
+            log.error("Error deleting resource {}: {}", id, e.getMessage());
+            throw new RuntimeException("Failed to delete resource: " + e.getMessage(), e);
+        }
     }
-
     /**
      * Search resources
      */

@@ -24,6 +24,8 @@ public interface WebhookConfigRepository extends JpaRepository<WebhookConfig, Lo
      * Find webhooks for a specific resource
      */
     List<WebhookConfig> findByResourceIdAndEnabled(Long resourceId, boolean enabled);
+
+    List<WebhookConfig> findByResourceId(Long resourceId);
     
     /**
      * Find webhooks for a specific resource type
