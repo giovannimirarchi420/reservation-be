@@ -3,6 +3,7 @@ package it.polito.cloudresources.be.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.ResourceDTO;
 import it.polito.cloudresources.be.model.ResourceStatus;
 import it.polito.cloudresources.be.service.ResourceService;
@@ -144,8 +145,8 @@ public class ResourceController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
-
-        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+        return utils.createSuccessResponse(
+                "Resource deleted successfully");
     }
 
     /**
