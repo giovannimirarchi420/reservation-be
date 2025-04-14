@@ -6,37 +6,39 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.dto.AuditLogDTO;
 import it.polito.cloudresources.be.dto.logs.EnhancedAuditLogResponseDTO;
-import it.polito.cloudresources.be.model.AuditLog;
-import it.polito.cloudresources.be.service.AuditLogViewerService;
+import it.polito.cloudresources.be.service.AuditLogService;
+import it.polito.cloudresources.be.util.ControllerUtils;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZonedDateTime;
-import java.util.List;
 
 /**
  * REST API controller for accessing and searching audit logs
+ * Updated to use same authentication mechanism as other controllers
  */
 @RestController
 @RequestMapping("/audit-logs")
 @RequiredArgsConstructor
 @Tag(name = "Audit Logs", description = "API for accessing and searching audit logs (Admin only)")
 @SecurityRequirement(name = "bearer-auth")
-@PreAuthorize("hasAnyRole('GLOBAL_ADMIN', 'FEDERATION_ADMIN')")
 public class AuditLogController {
 
-    private final AuditLogViewerService auditLogViewerService;
+    private final AuditLogService auditLogService;
+    private final ControllerUtils utils;
 
     /**
      * Get audit logs with optional filtering, pagination and statistics
      */
     @GetMapping
     @Operation(summary = "Get audit logs", description = "Retrieves audit logs with optional filtering, pagination and statistics (Admin only)")
-    public ResponseEntity<ApiResponseDTO> getAuditLogs(
+    public ResponseEntity<Object> getAuditLogs(
             @RequestParam(required = false) String entityType,
             @RequestParam(required = false) String entityId,
             @RequestParam(required = false) String username,
@@ -47,90 +49,40 @@ public class AuditLogController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) ZonedDateTime endDate,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
 
         try {
-            // Start with all logs, then apply filters progressively
-            List<AuditLogDTO> logs;
+            // Get current user ID from authentication token
+            String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
             
-            // Apply pagination for initial fetch if no content search is needed
-            // Otherwise, we'll filter first and paginate the final results
-            if (query == null || query.trim().isEmpty()) {
-                logs = auditLogViewerService.getAllLogs(page, size);
-            } else {
-                // If we have a query parameter, search logs by content first
-                logs = auditLogViewerService.searchLogs(query, 0, Integer.MAX_VALUE);
+            if (currentUserKeycloakId == null) {
+                return utils.createErrorResponse(HttpStatus.UNAUTHORIZED, "Authentication required");
             }
             
-            // Apply filters in sequence (AND logic)
-            if (entityType != null) {
-                logs = logs.stream()
-                    .filter(log -> entityType.equals(log.getEntityType()))
-                    .toList();
-            }
+            EnhancedAuditLogResponseDTO response = auditLogService.getAllAuditLogs(
+                    currentUserKeycloakId,
+                    entityType,
+                    entityId,
+                    username,
+                    action,
+                    severity,
+                    logType,
+                    query,
+                    startDate,
+                    endDate,
+                    page,
+                    size
+            );
             
-            if (entityId != null) {
-                logs = logs.stream()
-                    .filter(log -> entityId.equals(log.getEntityId()))
-                    .toList();
-            }
-            
-            if (username != null) {
-                logs = logs.stream()
-                    .filter(log -> username.equals(log.getUsername()))
-                    .toList();
-            }
-            
-            if (action != null) {
-                AuditLog.LogAction logAction = parseLogAction(action);
-                logs = logs.stream()
-                    .filter(log -> logAction.equals(log.getAction()))
-                    .toList();
-            }
-            
-            if (severity != null) {
-                AuditLog.LogSeverity logSeverity = parseLogSeverity(severity);
-                logs = logs.stream()
-                    .filter(log -> logSeverity.equals(log.getSeverity()))
-                    .toList();
-            }
-            
-            if (logType != null) {
-                AuditLog.LogType logTypeEnum = parseLogType(logType);
-                logs = logs.stream()
-                    .filter(log -> logTypeEnum.equals(log.getLogType()))
-                    .toList();
-            }
-            
-            if (startDate != null && endDate != null) {
-                logs = logs.stream()
-                    .filter(log -> {
-                        ZonedDateTime logTime = log.getTimestamp();
-                        return (logTime.isEqual(startDate) || logTime.isAfter(startDate)) && 
-                               (logTime.isEqual(endDate) || logTime.isBefore(endDate));
-                    })
-                    .toList();
-            }
-
-            // Apply paging to the result if we did content search first
-            if (query != null && !query.trim().isEmpty() && logs.size() > size) {
-                int fromIndex = page * size;
-                int toIndex = Math.min(fromIndex + size, logs.size());
-                
-                if (fromIndex < logs.size()) {
-                    logs = logs.subList(fromIndex, toIndex);
-                } else {
-                    logs = List.of(); // Empty list if page is out of bounds
-                }
-            }
-            
-            // Get enhanced response with statistics
-            EnhancedAuditLogResponseDTO enhancedResponse = auditLogViewerService.getLogStatistics(logs);
-            
-            return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", enhancedResponse));
+            return ResponseEntity.ok(new ApiResponseDTO(true, "Logs retrieved successfully", response));
+        } catch (AccessDeniedException e) {
+            return utils.createErrorResponse(HttpStatus.FORBIDDEN, "Access denied: " + e.getMessage());
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ApiResponseDTO(false, e.getMessage()));
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (Exception e) {
+            return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, 
+                    "An unexpected error occurred: " + e.getMessage());
         }
     }
 
@@ -139,42 +91,27 @@ public class AuditLogController {
      */
     @GetMapping("/{id}")
     @Operation(summary = "Get log by ID", description = "Retrieves a specific audit log by its ID (Admin only)")
-    public ResponseEntity<AuditLogDTO> getLogById(@PathVariable Long id) {
-        return auditLogViewerService.getLogById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * Parse log action from string
-     */
-    private AuditLog.LogAction parseLogAction(String action) {
+    public ResponseEntity<Object> getLogById(
+            @PathVariable Long id,
+            Authentication authentication) {
+        
         try {
-            return AuditLog.LogAction.valueOf(action.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid action value. Expected one of: CREATE, UPDATE, DELETE");
-        }
-    }
-
-    /**
-     * Parse log severity from string
-     */
-    private AuditLog.LogSeverity parseLogSeverity(String severity) {
-        try {
-            return AuditLog.LogSeverity.valueOf(severity.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid severity value. Expected one of: INFO, WARNING, ERROR");
-        }
-    }
-
-    /**
-     * Parse log type from string
-     */
-    private AuditLog.LogType parseLogType(String logType) {
-        try {
-            return AuditLog.LogType.valueOf(logType.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid log type value. Expected one of: USER, ADMIN");
+            // Get current user ID from authentication token
+            String currentUserKeycloakId = utils.getCurrentUserKeycloakId(authentication);
+            
+            if (currentUserKeycloakId == null) {
+                return utils.createErrorResponse(HttpStatus.UNAUTHORIZED, "Authentication required");
+            }
+            
+            return ResponseEntity.ok(auditLogService.getLogById(id, currentUserKeycloakId));
+                    
+        } catch (AccessDeniedException e) {
+            return utils.createErrorResponse(HttpStatus.FORBIDDEN, "Access denied: " + e.getMessage());
+        } catch(EntityNotFoundException e ) {
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (Exception e) {
+            return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, 
+                    "An unexpected error occurred: " + e.getMessage());
         }
     }
 }

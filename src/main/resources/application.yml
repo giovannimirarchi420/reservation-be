@@ -38,12 +38,12 @@ logging:
     name: logs/application.log
   level:
     root: INFO
-    it.polito.cloudresources.be: DEBUG
-    it.polito.cloudresources.be.config.RequestLoggingFilter: DEBUG
+    it.polito.cloudresources.be: INFO
+    it.polito.cloudresources.be.config.RequestLoggingFilter: INFO
     it.polito.cloudresources.be.config.SecurityEventLogger: INFO
     it.polito.cloudresources.be.config.MethodLoggingAspect: INFO
     org.springframework.security: WARN
     org.springframework.web: INFO
     org.hibernate.SQL: WARN
   # To enable logging of HTTP request details:
-    org.springframework.web.filter.CommonsRequestLoggingFilter: DEBUG
+    org.springframework.web.filter.CommonsRequestLoggingFilter: INFO

@@ -53,10 +53,10 @@ public class SiteController {
     }
     
     /**
-     * Get federation by ID
+     * Get site by ID
      */
     @GetMapping("/{id}")
-    @Operation(summary = "Get site by ID", description = "Retrieves a specific federation by its ID. User must belong to the federation or be a global admin.")
+    @Operation(summary = "Get site by ID", description = "Retrieves a specific site by its ID. User must belong to the site or be a global admin.")
     public ResponseEntity<SiteDTO> getSiteById(@PathVariable String id, Authentication authentication) {
         try {
             String userId = utils.getCurrentUserKeycloakId(authentication);
@@ -79,8 +79,8 @@ public class SiteController {
             @Valid @RequestBody SiteDTO siteDTO, Authentication authentication) {
         try {
             String userId = utils.getCurrentUserKeycloakId(authentication);
-            SiteDTO createdFederation = siteService.createSite(siteDTO, userId);
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdFederation);
+            SiteDTO createdSite = siteService.createSite(siteDTO, userId);
+            return ResponseEntity.status(HttpStatus.CREATED).body(createdSite);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -142,7 +142,7 @@ public class SiteController {
      */
     @PostMapping("/{id}/users/{userId}")
     @Operation(summary = "Add user to site", description = "Adds a user to a site. Requires either Global Admin role or Site Admin role for this site.")
-    public ResponseEntity<Object> addUserToFederation(
+    public ResponseEntity<Object> addUserToSite(
             @PathVariable String id,
             @PathVariable String userId,
             Authentication authentication) {
@@ -162,7 +162,7 @@ public class SiteController {
      */
     @DeleteMapping("/{id}/users/{userId}")
     @Operation(summary = "Remove user from site", description = "Removes a user from a site. Requires either Global Admin role or Site Admin role for this site.")
-    public ResponseEntity<Object> removeUserFromFederation(
+    public ResponseEntity<Object> removeUserFromSite(
             @PathVariable String id,
             @PathVariable String userId,
             Authentication authentication) {
@@ -220,7 +220,7 @@ public class SiteController {
     }
     
     /**
-     * Get federation admins
+     * Get site admins
      */
     @GetMapping("/{id}/admins")
     @Operation(summary = "Get site admins", description = "Retrieves all admin users for a site")

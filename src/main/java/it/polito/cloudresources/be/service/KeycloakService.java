@@ -154,9 +154,11 @@ public class KeycloakService {
 
             assignGroupsToUser(userId);
 
-            // Assign roles to user TODO: Manage federation
+            // Assign roles to user
             if (roles != null && !roles.isEmpty()) {
-
+                for (String role : roles) {
+                    assignRoleToUser(userId, role);
+                }
             }
 
             return userId;

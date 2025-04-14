@@ -134,7 +134,7 @@ public class NotificationController {
      * Send notification to a user by Keycloak ID (admin only)
      */
     @PostMapping("/send")
-    @PreAuthorize("hasAnyRole('FEDERATION_ADMIN', 'GLOBAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('GLOBAL_ADMIN')")
     @Operation(summary = "Send notification", description = "Sends a notification to a specific user (Admin only)")
     public ResponseEntity<NotificationDTO> sendNotification(
             @RequestParam String userId,

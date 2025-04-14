@@ -173,7 +173,7 @@ public class SiteService {
      * @param siteId
      */
     public List<UserDTO> getUsersInSite(String siteId, String userId) throws AccessDeniedException {
-        // Check if user has access to this federation
+        // Check if user has access to this site
         if (!keycloakService.hasGlobalAdminRole(userId) &&
                 !keycloakService.isUserSiteAdmin(userId, siteId)) {
             throw new AccessDeniedException("User can't access this site");
@@ -230,7 +230,7 @@ public class SiteService {
         
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.DELETE,
-                new AuditLog.LogEntity("site-USER", siteId),
+                new AuditLog.LogEntity("SITE-USER", siteId),
                 "Deleted user " + userId + " from site " + siteId);
     }
     
