@@ -265,6 +265,26 @@ public class KeycloakService {
                 }
             }
 
+            if (attributes.containsKey("roles")) {
+                @SuppressWarnings("unchecked")
+                List<String> newRoleNames = (List<String>) attributes.get("roles");
+                
+                List<RoleRepresentation> currentRoles = userResource.roles().realmLevel().listAll();
+                List<String> currentRoleNames = currentRoles.stream()
+                    .map(RoleRepresentation::getName)
+                    .collect(Collectors.toList());
+                
+                List<String> rolesToAdd = newRoleNames.stream()
+                    .filter(roleName -> !currentRoleNames.contains(roleName))
+                    .collect(Collectors.toList());
+                
+                for (String roleName : rolesToAdd) {
+                    assignRoleToUser(userId, roleName);
+                }
+                
+                log.info("Updated roles for user {}: added {}", userId, rolesToAdd);
+            }
+
             user.setAttributes(userAttributes);
 
             // Update basic user info first

@@ -161,16 +161,17 @@ public class UserService {
      * Update existing user with optional password update
      * @param id The Keycloak user ID
      * @param updateUserDTO The user data to update
+     * @param requesterUserId The Keycloak user ID of the requester
      * @return The updated user
      */
     public UserDTO updateUser(String id, UpdateUserDTO updateUserDTO, String requesterUserId) {
 
-        if (!(Objects.equals(id, requesterUserId) &&
-                !keycloakService.hasGlobalAdminRole(requesterUserId)) &&
-                !keycloakService.getUserAdminGroups(requesterUserId).isEmpty()
-        ) {
+        if (!Objects.equals(id, requesterUserId) && 
+            !keycloakService.hasGlobalAdminRole(requesterUserId) && 
+            keycloakService.getUserAdminGroups(requesterUserId).isEmpty()) {
             throw new AccessDeniedException("User does not have enough privileges");
-        }
+        }   
+        
         Map<String, Object> attributes = new HashMap<>();
 
         // Only update fields that are present in the DTO
