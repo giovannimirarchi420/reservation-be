@@ -54,6 +54,7 @@ public class KeycloakService {
     public static final String USER_ADMIN_GROUPS_CACHE = "keycloak_user_admin_groups";
     public static final String USER_SITES_CACHE = "keycloak_user_sites";
     public static final String USER_BY_ROLE_CACHE = "keycloak_users_by_role";
+    public static final String USER_SITE_ADMIN_STATUS = "keycloak_site_admin_status";
 
     @Value("${keycloak.auth-server-url}")
     private String authServerUrl;
@@ -706,7 +707,7 @@ public class KeycloakService {
     /**
      * Checks if a user is an admin of a site
      */
-    @Cacheable(value = "keycloak_site_admin_status", key = "#userId + '_' + #siteId")
+    @Cacheable(value = USER_SITE_ADMIN_STATUS, key = "#userId + '_' + #siteId")
     public boolean isUserSiteAdmin(String userId, String siteId) {
         // Global admins are implicitly site admins
         if (hasGlobalAdminRole(userId)) {
@@ -910,6 +911,14 @@ public class KeycloakService {
     /**
      * Make a user a site admin
      */
+    @Caching(evict = {        
+        @CacheEvict(value = USERS_CACHE, allEntries = true),
+        @CacheEvict(value = USER_GROUPS_CACHE, key = "#userId"),
+        @CacheEvict(value = USER_SITES_CACHE, key = "#userId"),
+        @CacheEvict(value = USERS_IN_GROUP_CACHE, allEntries = true),
+        @CacheEvict(value = GROUP_MEMBERS_CACHE, allEntries = true),
+        @CacheEvict(value = USER_SITE_ADMIN_STATUS, key = "#userId + '_' + #siteId")
+    })
     public boolean makeSiteAdmin(String userId, String siteId, String requesterUserId) throws AccessDeniedException {
         if (!hasGlobalAdminRole(requesterUserId) &&
                 !isUserSiteAdmin(requesterUserId, siteId)) {

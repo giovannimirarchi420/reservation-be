@@ -83,6 +83,7 @@ public class SiteController {
         try {
             String userId = utils.getCurrentUserKeycloakId(authentication);
             SiteDTO createdSite = siteService.createSite(siteDTO, userId, isPrivate);
+            System.out.println("Created site 123: " + createdSite);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdSite);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();

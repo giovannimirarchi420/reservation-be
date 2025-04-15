@@ -93,10 +93,13 @@ public class SiteService {
                 new AuditLog.LogEntity("site", siteId),
                 "Created site: " + siteDTO.getName());
 
-        // Get created site to return full details
-        return keycloakService.getGroupById(siteId)
+        int memberCount = keycloakService.getUsersInGroup(siteId).size();
+        SiteDTO siteOutputDto = keycloakService.getGroupById(siteId)
                 .map(siteMapper::toDto)
                 .orElseThrow(() -> new RuntimeException("Site created but could not be retrieved"));
+        
+        siteOutputDto.setMemberCount(memberCount);
+        return siteOutputDto;
     }
     
     /**

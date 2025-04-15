@@ -44,7 +44,7 @@ public class CacheConfig {
             KeycloakService.USER_ADMIN_GROUPS_CACHE,
             KeycloakService.USER_SITES_CACHE,
             KeycloakService.USER_BY_ROLE_CACHE,
-            "keycloak_site_admin_status",
+            KeycloakService.USER_SITE_ADMIN_STATUS,
             "keycloak_user_global_admin",
             "keycloak_user_admin_group_ids"
         ));
