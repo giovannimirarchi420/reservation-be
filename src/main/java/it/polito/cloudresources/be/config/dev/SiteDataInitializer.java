@@ -9,213 +9,192 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
-import it.polito.cloudresources.be.dto.users.CreateUserDTO;
 import it.polito.cloudresources.be.dto.users.UserDTO;
-import it.polito.cloudresources.be.model.Resource;
-import it.polito.cloudresources.be.model.ResourceType;
-import it.polito.cloudresources.be.repository.ResourceRepository;
-import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import it.polito.cloudresources.be.service.KeycloakService;
-import it.polito.cloudresources.be.service.UserService;
+import it.polito.cloudresources.be.service.MockKeycloakService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Initializes sites with sample data for development
+ * Initializes sites and users with sample data for development
  */
 @Configuration
 @RequiredArgsConstructor
 @Slf4j
 @Profile("dev")
 public class SiteDataInitializer {
-    private final KeycloakService keycloakService;
-    private final ResourceRepository resourceRepository;
-    private final ResourceTypeRepository resourceTypeRepository;
-    private final UserService userService;
+    private final MockKeycloakService keycloakService;
 
     @Bean(name = "initSites")
     public CommandLineRunner initSites() {
         return arg -> {
-            log.info("Initializing sample sites...");
+            log.info("Initializing sample sites and users...");
 
-            // Ensure core roles exist
-            keycloakService.ensureRealmRoles("GLOBAL_ADMIN", "USER");
+            try {
+                // Ensure core roles exist
+                keycloakService.ensureRealmRoles("GLOBAL_ADMIN", "USER");
 
-            // Create sample sites
-            String poliToId = keycloakService.setupNewKeycloakGroup("polito", "Turin Technical University", false);
-            String uniRomaId = keycloakService.setupNewKeycloakGroup("uniroma", "Rome University", false);
-            String uniMiId = keycloakService.setupNewKeycloakGroup("unimi", "Milan University", false);
+                // Create sample sites
+                String poliToId = keycloakService.setupNewKeycloakGroup("polito", "Turin Technical University", false);
+                String uniRomaId = keycloakService.setupNewKeycloakGroup("uniroma", "Rome University", false);
+                String uniMiId = keycloakService.setupNewKeycloakGroup("unimi", "Milan University", false);
 
-            log.info("Created sites with IDs: {}, {}, {}", poliToId, uniRomaId, uniMiId);
+                log.info("Created sites with IDs: {}, {}, {}", poliToId, uniRomaId, uniMiId);
 
-            // Create global admin user if needed
-            String adminId = createGlobalAdminUser(poliToId);
+                // Create global admin user directly via KeycloakService
+                String adminUsername = "admin1";
+                String adminPassword = "admin123";
+                Set<String> adminRoles = new HashSet<>(List.of("GLOBAL_ADMIN", "USER"));
+                
+                // Create admin user directly with Keycloak 
+                UserDTO adminDto = UserDTO.builder()
+                        .username(adminUsername)
+                        .email("admin@example.com")
+                        .firstName("Global")
+                        .lastName("Admin")
+                        .avatar("GA")
+                        .roles(adminRoles)
+                        .build();
+                
+                String globalAdminId = keycloakService.createUser(adminDto, adminPassword, adminRoles);
+                log.info("Created global admin user: {} with ID {}", adminUsername, globalAdminId);
 
-            // Add admin to all sites
-            keycloakService.addUserToKeycloakGroup(adminId, poliToId);
-            keycloakService.addUserToKeycloakGroup(adminId, uniRomaId);
-            keycloakService.addUserToKeycloakGroup(adminId, uniMiId);
+                // Add global admin to all sites
+                keycloakService.addUserToKeycloakGroup(globalAdminId, poliToId);
+                keycloakService.addUserToKeycloakGroup(globalAdminId, uniRomaId);
+                keycloakService.addUserToKeycloakGroup(globalAdminId, uniMiId);
 
-            // Create a regular user if needed
-            String userId = createRegularUser(poliToId);
+                // Create site admins for each university
+                String poliToAdminId = createSiteAdmin("polito_admin", "Polito", "Admin", poliToId);
+                String uniRomaAdminId = createSiteAdmin("uniroma_admin", "Uniroma", "Admin", uniRomaId);
+                String uniMiAdminId = createSiteAdmin("unimi_admin", "Unimi", "Admin", uniMiId);
 
-            // Add regular user to PoliTo only
-            keycloakService.addUserToKeycloakGroup(userId, poliToId);
+                // Create regular users for each university
+                String userPoliToId = createRegularUser("user_polito", "User", "Polito", poliToId);
+                String userUniRomaId = createRegularUser("user_uniroma", "User", "Uniroma", uniRomaId);
+                String userUniMiId = createRegularUser("user_unimi", "User", "Unimi", uniMiId);
 
-            // Create site admins
-            String poliToAdminId = createSiteAdmin("polito_admin", poliToId);
-            String uniRomaAdminId = createSiteAdmin("uniroma_admin", uniRomaId);
+                // Make sure admin roles are correctly assigned
+                ensureAdminRoles(globalAdminId, adminRoles);
+                ensureSiteAdminRole(poliToAdminId, "polito");
+                ensureSiteAdminRole(uniRomaAdminId, "uniroma");
+                ensureSiteAdminRole(uniMiAdminId, "unimi");
 
-            // Update resource types and resources to include site IDs
-            updateResourceTypes(poliToId, uniRomaId, uniMiId);
-
-            log.info("Sample sites initialized.");
+                log.info("Sample sites and users initialized successfully.");
+            } catch (Exception e) {
+                log.error("Error initializing sites and users: {}", e.getMessage(), e);
+                throw e;
+            }
         };
     }
 
     /**
-     * Create global admin user
+     * Create site admin user directly with Keycloak service
      */
-    private String createGlobalAdminUser(String siteId) {
-        // Check if admin already exists
-        String password = "admin123";
-        Set<String> roles = new HashSet<>(List.of("GLOBAL_ADMIN", "USER"));
+    private String createSiteAdmin(String username, String firstName, String lastName, String siteId) {
+        try {
+            // Check if admin already exists
+            String password = "admin123";
+            Set<String> roles = new HashSet<>(List.of("USER"));
 
-        return userService.getUserByUsername("admin1")
-                .map(UserDTO::getId)
-                .orElseGet(() -> {
-                    // Create admin using CreateUserDTO
-                    CreateUserDTO adminDTO = CreateUserDTO.builder()
-                            .username("admin1")
-                            .email("admin@example.com")
-                            .firstName("Global")
-                            .lastName("Admin")
-                            .roles(roles)
-                            .avatar("GA")
-                            .password(password)
-                            .build();
+            // Create user directly with Keycloak
+            UserDTO userDto = UserDTO.builder()
+                    .username(username)
+                    .email(username + "@example.com")
+                    .firstName(firstName)
+                    .lastName(lastName)
+                    .avatar(firstName.substring(0, 1).toUpperCase() + "A")
+                    .roles(roles)
+                    .build();
+            
+            String userId = keycloakService.createUser(userDto, password, roles);
+            log.info("Created user: {} with ID {}", username, userId);
+            
+            // Add to site
+            keycloakService.addUserToKeycloakGroup(userId, siteId);
+            
+            // Get the site name from the ID
+            String siteName = keycloakService.getGroupById(siteId)
+                    .map(group -> group.getName())
+                    .orElseThrow(() -> new RuntimeException("Site not found with ID: " + siteId));
 
-                    try {
-                        UserDTO createdAdmin = userService.createUser(adminDTO, password, "admin1");
-                        return createdAdmin.getId();
-                    } catch (Exception e) {
-                        log.error("Error creating admin user: {}", e.getMessage());
-                        throw new RuntimeException("Failed to create admin user", e);
-                    }
-                });
+            // Assign site admin role
+            keycloakService.assignSiteAdminRole(userId, siteName);
+            
+            log.info("Created site admin {} with role {}_site_admin", username, siteName.toLowerCase());
+            
+            return userId;
+        } catch (Exception e) {
+            log.error("Error creating site admin user: {}", e.getMessage());
+            throw new RuntimeException("Failed to create site admin user", e);
+        }
     }
 
     /**
-     * Create regular user
+     * Create regular user directly with Keycloak service
      */
-    private String createRegularUser(String siteId) {
-        // Check if user already exists
-        String password = "user123";
-        Set<String> roles = new HashSet<>(List.of("USER"));
+    private String createRegularUser(String username, String firstName, String lastName, String siteId) {
+        try {
+            // Check if user already exists
+            String password = "user123";
+            Set<String> roles = new HashSet<>(List.of("USER"));
 
-        return userService.getUserByUsername("user1")
-                .map(UserDTO::getId)
-                .orElseGet(() -> {
-                    // Create user using CreateUserDTO
-                    CreateUserDTO userDTO = CreateUserDTO.builder()
-                            .username("user1")
-                            .email("user@example.com")
-                            .firstName("Regular")
-                            .lastName("User")
-                            .roles(roles)
-                            .avatar("RU")
-                            .password(password)
-                            .build();
+            // Create user directly with Keycloak
+            UserDTO userDto = UserDTO.builder()
+                    .username(username)
+                    .email(username + "@example.com")
+                    .firstName(firstName)
+                    .lastName(lastName)
+                    .avatar(firstName.substring(0, 1).toUpperCase() + lastName.substring(0, 1).toUpperCase())
+                    .roles(roles)
+                    .build();
+            
+            String userId = keycloakService.createUser(userDto, password, roles);
+            log.info("Created user: {} with ID {}", username, userId);
 
-                    try {
-                        UserDTO createdUser = userService.createUser(userDTO, password, "admin1");
-                        return createdUser.getId();
-                    } catch (Exception e) {
-                        log.error("Error creating regular user: {}", e.getMessage());
-                        throw new RuntimeException("Failed to create regular user", e);
-                    }
-                });
+            // Add user to site
+            keycloakService.addUserToKeycloakGroup(userId, siteId);
+            log.info("Added user {} to site {}", username, siteId);
+            
+            return userId;
+        } catch (Exception e) {
+            log.error("Error creating regular user {}: {}", username, e.getMessage());
+            throw new RuntimeException("Failed to create regular user", e);
+        }
     }
-
+    
     /**
-     * Create site admin user
+     * Ensure admin roles are correctly assigned
      */
-    private String createSiteAdmin(String username, String siteId) {
-        // Check if admin already exists
-        String password = "admin123";
-        Set<String> roles = new HashSet<>(List.of("USER"));
-
-        return userService.getUserByUsername(username)
-                .map(UserDTO::getId)
-                .orElseGet(() -> {
-                    // Create site admin using CreateUserDTO with just the USER role initially
-                    CreateUserDTO adminDTO = CreateUserDTO.builder()
-                            .username(username)
-                            .email(username + "@example.com")
-                            .firstName(username.substring(0, 1).toUpperCase() + username.substring(1).split("_")[0])
-                            .lastName("Admin")
-                            .roles(roles)
-                            .avatar(username.substring(0, 1).toUpperCase() + "A")
-                            .password(password)
-                            .build();
-
-                    try {
-                        // Create the user with basic role
-                        UserDTO createdAdmin = userService.createUser(adminDTO, password, "admin1");
-                        String adminId = createdAdmin.getId();
-
-                        // Get the site name from the ID
-                        String siteName = keycloakService.getGroupById(siteId)
-                                .map(group -> group.getName())
-                                .orElseThrow(() -> new RuntimeException("Site not found with ID: " + siteId));
-
-                        // Now assign the site-specific admin role
-                        keycloakService.assignSiteAdminRole(adminId, siteName);
-
-                        log.info("Created site admin {} with role {}_site_admin", username, siteName.toLowerCase());
-
-                        return adminId;
-                    } catch (Exception e) {
-                        log.error("Error creating site admin user: {}", e.getMessage());
-                        throw new RuntimeException("Failed to create site admin user", e);
-                    }
-                });
-    }
-
-    /**
-     * Updates existing resource types and resources to include site IDs
-     */
-    private void updateResourceTypes(String poliToId, String uniRomaId, String uniMiId) {
-        List<ResourceType> resourceTypes = resourceTypeRepository.findAll();
-
-        if (!resourceTypes.isEmpty()) {
-            // Assign the first resource type to PoliTo, second to UniRoma, rest to Milano
-            for (int i = 0; i < resourceTypes.size(); i++) {
-                ResourceType resourceType = resourceTypes.get(i);
-                String siteId;
-
-                if (i == 0) {
-                    siteId = poliToId;
-                } else if (i == 1) {
-                    siteId = uniRomaId;
-                } else {
-                    siteId = uniMiId;
-                }
-
-                // Update the resource type with site ID
-                resourceType.setSiteId(siteId);
-                resourceTypeRepository.save(resourceType);
-
-                // Update all resources of this type to match the site
-                List<Resource> resources = resourceRepository.findByTypeId(resourceType.getId());
-                for (Resource resource : resources) {
-                    resource.setSiteId(siteId);
-                    resourceRepository.save(resource);
-                }
-
-                log.info("Updated resource type {} and {} resources to site {}",
-                        resourceType.getName(), resources.size(), siteId);
+    private void ensureAdminRoles(String userId, Set<String> roles) {
+        try {
+            // Make sure GLOBAL_ADMIN role exists
+            keycloakService.ensureRealmRoles("GLOBAL_ADMIN");
+            
+            // Assign roles to user
+            for (String role : roles) {
+                boolean assigned = keycloakService.assignRoleToUser(userId, role);
+                log.info("Role {} assigned to user {}: {}", role, userId, assigned);
             }
+        } catch (Exception e) {
+            log.error("Error ensuring admin roles: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Ensure site admin role is correctly assigned
+     */
+    private void ensureSiteAdminRole(String userId, String siteName) {
+        try {
+            // Make sure role exists
+            String rolePrefix = siteName.toLowerCase().replace(' ', '_');
+            keycloakService.ensureRealmRoles(rolePrefix + "_site_admin");
+            
+            // Assign role
+            boolean assigned = keycloakService.assignSiteAdminRole(userId, siteName);
+            log.info("Site admin role for {} assigned to user {}: {}", siteName, userId, assigned);
+        } catch (Exception e) {
+            log.error("Error ensuring site admin role: {}", e.getMessage());
         }
     }
 }

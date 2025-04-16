@@ -33,6 +33,55 @@ public class MockKeycloakService extends KeycloakService {
      */
     public MockKeycloakService() {
         log.info("Initializing MockKeycloakService");
+        
+        // Create initial admin user for bootstrapping
+        String adminId = UUID.randomUUID().toString();
+        UserRepresentation adminUser = new UserRepresentation();
+        UserRepresentation user = new UserRepresentation();
+
+        adminUser.setId(adminId);
+        adminUser.setUsername("admin1");
+        adminUser.setEmail("admin@example.com");
+        adminUser.setFirstName("Global");
+        adminUser.setLastName("Admin");
+        adminUser.setEnabled(true);
+        
+        users.put(adminId, adminUser);
+
+        String userId = UUID.randomUUID().toString();
+
+        user.setId(userId);
+        user.setUsername("user1");
+        user.setEmail("user@example.com");
+        user.setFirstName("User");
+        user.setLastName("UserLasname");
+        user.setEnabled(true);
+        
+        users.put(userId, user);
+        userRoles.put(adminId, new ArrayList<>(Arrays.asList("GLOBAL_ADMIN", "USER")));
+        userSites.put(adminId, new HashSet<>());
+        userRoles.put(userId, new ArrayList<>(Arrays.asList("GLOBAL_ADMIN", "USER")));
+        userSites.put(userId, new HashSet<>());
+        
+        log.info("Created bootstrap admin user with ID: {}", adminId);
+    }
+
+    /**
+     * Assign a role to a user - public version for initialization
+     */
+    public boolean assignRoleToUser(String userId, String roleName) {
+        try {
+            List<String> userRolesList = userRoles.getOrDefault(userId, new ArrayList<>());
+            if (!userRolesList.contains(roleName)) {
+                userRolesList.add(roleName);
+                userRoles.put(userId, userRolesList);
+                log.info("Assigned role {} to user {}", roleName, userId);
+            }
+            return true;
+        } catch (Exception e) {
+            log.error("Error assigning role {} to user {}", roleName, userId, e);
+            return false;
+        }
     }
 
     @Override
@@ -450,6 +499,23 @@ public class MockKeycloakService extends KeycloakService {
     public boolean hasGlobalAdminRole(String userId) {
         List<String> roles = getUserRoles(userId);
         return roles.contains("GLOBAL_ADMIN");
+    }
+
+    /**
+     * In dev mode, assume that we're logged in as admin1 for consistent access
+     */
+    public String getCurrentUserKeycloakId() {
+        // In development, return the ID of admin1
+        Optional<UserRepresentation> adminUser = getUserByUsername("admin1");
+        if (adminUser.isPresent()) {
+            return adminUser.get().getId();
+        }
+        
+        // If admin1 doesn't exist (shouldn't happen), return first user ID
+        return users.values().stream()
+            .findFirst()
+            .map(UserRepresentation::getId)
+            .orElse("mock-user-id");
     }
 
     @Override

@@ -40,5 +40,5 @@ app:
   # Dev settings
   security:
     dev-mode: true
-    admin-username: admin
-    admin-password: admin
+    admin-username: admin1
+    admin-password: admin123

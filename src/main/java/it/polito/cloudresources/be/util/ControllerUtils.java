@@ -1,6 +1,10 @@
 package it.polito.cloudresources.be.util;
 
 import it.polito.cloudresources.be.dto.ApiResponseDTO;
+import it.polito.cloudresources.be.service.KeycloakService;
+import it.polito.cloudresources.be.service.MockKeycloakService;
+import lombok.AllArgsConstructor;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -11,19 +15,28 @@ import org.springframework.stereotype.Component;
  * Utility class for common controller operations
  */
 @Component
+@AllArgsConstructor
 public class ControllerUtils {
 
+    private final KeycloakService keycloakService;
     /**
      * Extracts the Keycloak ID from the authentication token
      *
      * @param authentication The authentication object
-     * @return The Keycloak ID (subject) from the JWT token, or null if not available
+     * @return The Keycloak ID (subject) from the JWT token, or a mock ID in dev mode
      */
     public String getCurrentUserKeycloakId(Authentication authentication) {
+        // For development environment, use the mock user ID
+        if (keycloakService instanceof MockKeycloakService) {
+            return ((MockKeycloakService) keycloakService).getCurrentUserKeycloakId();
+        }
+        
+        // Normal JWT flow for production
         if (authentication instanceof JwtAuthenticationToken) {
             JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
             return jwtAuth.getToken().getSubject();
         }
+        
         return null;
     }
 
