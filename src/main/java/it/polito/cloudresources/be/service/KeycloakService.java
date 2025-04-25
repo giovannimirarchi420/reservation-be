@@ -16,7 +16,6 @@ import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.context.annotation.Profile;
@@ -1096,6 +1095,21 @@ public class KeycloakService {
         } catch (Exception e) {
             log.error("Error assigning groups to user: {}", userId, e);
             return false;
+        }
+    }
+
+    /**
+     * Get site name by site ID, returning a default value if site is not found
+     * @param siteId The ID of the site/group
+     * @param defaultName The default name to return if site is not found
+     * @return The site name, or the default name if site is not found
+     */
+    public String getSiteNameById(String siteId, String defaultName) {
+        Optional<GroupRepresentation> groupRepresentation = getGroupById(siteId);
+        if (groupRepresentation.isPresent()) {
+            return groupRepresentation.get().getName();
+        } else {
+            return defaultName;
         }
     }
 

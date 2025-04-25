@@ -10,7 +10,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 import it.polito.cloudresources.be.dto.users.UserDTO;
-import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.MockKeycloakService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

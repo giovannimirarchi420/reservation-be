@@ -13,6 +13,8 @@ import it.polito.cloudresources.be.util.DateTimeUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -154,24 +156,27 @@ public class EventService {
         // Make sure both dates have time zone info
         ZonedDateTime normalizedStartDate = dateTimeUtils.ensureTimeZone(startDate);
         ZonedDateTime normalizedEndDate = dateTimeUtils.ensureTimeZone(endDate);
-        
+
+        log.debug("getEventsByDateRange called for userId: {}", userId); // Log the incoming userId
+
         List<Event> events = eventRepository.findByDateRange(normalizedStartDate, normalizedEndDate);
-        
+
         // Filter events based on site access
         List<Event> accessibleEvents;
-        
+
         if (keycloakService.hasGlobalAdminRole(userId)) {
             // Global admins see all events
             accessibleEvents = events;
         } else {
             // Site users see only events for resources in their sites
-            List<String> userSites = keycloakService.getUserSites(userId);
-            
+            log.debug("Attempting to fetch sites for user ID: {}", userId); // Log before the potentially failing call
+            List<String> userSites = keycloakService.getUserSites(userId); // This call might be failing
+
             accessibleEvents = events.stream()
                     .filter(event -> userSites.contains(event.getResource().getSiteId()))
                     .collect(Collectors.toList());
         }
-        
+
         return eventMapper.toDto(accessibleEvents);
     }
 
@@ -264,11 +269,16 @@ public class EventService {
                 "New booking from " + dateTimeUtils.formatDateTime(eventDTO.getStart()) + 
                 " to " + dateTimeUtils.formatDateTime(eventDTO.getEnd())
         );
+        
+
+        String siteName = keycloakService.getSiteNameById(savedEvent.getResource().getSiteId(), "Unknown site");
 
         auditLogService.logCrudAction(AuditLog.LogType.USER,
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("EVENT", savedEvent.getId().toString()),
-                "User: " + userId + " created event");
+                "User: " + userId + " created event",
+                siteName);
+                
 
         webhookService.processResourceEvent(WebhookEventType.EVENT_CREATED, resource, savedEvent);
         
@@ -380,11 +390,13 @@ public class EventService {
                     }
                     
                     Event updatedEvent = eventRepository.save(existingEvent);
+                    String siteName = keycloakService.getSiteNameById(updatedEvent.getResource().getSiteId(), "Unknown site");
 
                     auditLogService.logCrudAction(AuditLog.LogType.USER,
                             AuditLog.LogAction.UPDATE,
                             new AuditLog.LogEntity("EVENT", updatedEvent.getId().toString()),
-                            "User: " + userId + " updated event to: " + updatedEvent);
+                            "User: " + userId + " updated event to: " + updatedEvent,
+                            siteName);
 
                     webhookService.processResourceEvent(WebhookEventType.EVENT_UPDATED, updatedEvent.getResource(), updatedEvent);
 
@@ -410,13 +422,16 @@ public class EventService {
         if (!canModifyEvent(userId, event)) {
             throw new AccessDeniedException("You don't have permission to delete this event");
         }
+
+        String siteName = keycloakService.getSiteNameById(event.getResource().getSiteId(), "Unknown site");
         
         eventRepository.deleteById(id);
 
         auditLogService.logCrudAction(AuditLog.LogType.USER,
                 AuditLog.LogAction.DELETE,
                 new AuditLog.LogEntity("EVENT", event.getId().toString()),
-                "User: " + userId + " deleted event: " + event);
+                "User: " + userId + " deleted event: " + event,
+                siteName);
 
         webhookService.processResourceEvent(WebhookEventType.EVENT_DELETED, event.getResource(), event);
 
@@ -521,4 +536,4 @@ public class EventService {
         return keycloakService.isUserInGroup(userId, siteId);
     }
 
-}   
+}

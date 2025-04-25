@@ -4,6 +4,7 @@ import it.polito.cloudresources.be.dto.ApiResponseDTO;
 import it.polito.cloudresources.be.service.KeycloakService;
 import it.polito.cloudresources.be.service.MockKeycloakService;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @AllArgsConstructor
+@Slf4j
 public class ControllerUtils {
 
     private final KeycloakService keycloakService;
@@ -28,6 +30,7 @@ public class ControllerUtils {
     public String getCurrentUserKeycloakId(Authentication authentication) {
         // For development environment, use the mock user ID
         if (keycloakService instanceof MockKeycloakService) {
+            log.debug("Using mock Keycloak service");
             return ((MockKeycloakService) keycloakService).getCurrentUserKeycloakId();
         }
         

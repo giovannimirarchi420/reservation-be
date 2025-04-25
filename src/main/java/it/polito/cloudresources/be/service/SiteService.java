@@ -91,7 +91,8 @@ public class SiteService {
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("site", siteId),
-                "Created site: " + siteDTO.getName());
+                "Created site: " + siteDTO.getName(),
+                siteDTO.getName());
 
         int memberCount = keycloakService.getUsersInGroup(siteId).size();
         SiteDTO siteOutputDto = keycloakService.getGroupById(siteId)
@@ -117,7 +118,8 @@ public class SiteService {
             auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                     AuditLog.LogAction.UPDATE,
                     new AuditLog.LogEntity("site", id),
-                    "Updated site: " + group.getName());
+                    "Updated site: " + group.getName(),
+                    group.getName());
             
             // Get updated site to return
             return keycloakService.getGroupById(id)
@@ -169,7 +171,8 @@ public class SiteService {
             auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                     AuditLog.LogAction.DELETE,
                     new AuditLog.LogEntity("site", id),
-                    "Deleted site: " + siteName);
+                    "Deleted site: " + siteName,
+                    siteName);
         } else {
             throw new RuntimeException("Error deleting the site " + id);
         }
@@ -206,11 +209,15 @@ public class SiteService {
         boolean added = keycloakService.addUserToKeycloakGroup(userId, siteId);
         
         if (added) {
+
+            String siteName = keycloakService.getSiteNameById(siteId, "Unknown site");
+
             // Log the action
             auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                     AuditLog.LogAction.UPDATE,
                     new AuditLog.LogEntity("SITE-USER", siteId),
-                    "Added user " + userId + " to site " + siteId);
+                    "Added user " + userId + " to site " + siteId,
+                    siteName);
         } else {
             throw new RuntimeException("Error adding new user to the site, please try again");
         }
@@ -235,10 +242,13 @@ public class SiteService {
         
         keycloakService.removeUserFromSite(userId, siteId);
         
+        String siteName = keycloakService.getSiteNameById(siteId, "Unknown site");
+        
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.DELETE,
                 new AuditLog.LogEntity("SITE-USER", siteId),
-                "Deleted user " + userId + " from site " + siteId);
+                "Deleted user " + userId + " from site " + siteId,
+                siteName);
     }
     
     /**

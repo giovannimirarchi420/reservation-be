@@ -11,14 +11,14 @@ import java.time.ZonedDateTime;
 import java.util.Optional;
 
 /**
- * Configurazione unificata per JPA con supporto auditing e ZonedDateTime
+ * Unified JPA configuration with auditing and ZonedDateTime support
  */
 @Configuration
 @EnableJpaAuditing(dateTimeProviderRef = "auditingDateTimeProvider")
 public class JpaConfig {
     
     /**
-     * Provider DateTimeProvider personalizzato che fornisce istanze ZonedDateTime per l'auditing
+     * Custom DateTimeProvider that provides ZonedDateTime instances for auditing
      */
     @Bean
     public DateTimeProvider auditingDateTimeProvider() {

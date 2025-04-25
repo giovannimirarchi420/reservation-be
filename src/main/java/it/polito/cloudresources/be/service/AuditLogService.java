@@ -52,6 +52,20 @@ public class AuditLogService {
         );
     }
 
+    @Async
+    public void logCrudAction(AuditLog.LogType type, AuditLog.LogAction action, AuditLog.LogEntity entity, String details, String siteName) {
+        // Save to database
+        createAndSaveAuditLogWithSiteNameCRUD(
+                type,
+                entity.getEntityType(),
+                action,
+                details,
+                entity.getEntityId(),
+                AuditLog.LogSeverity.INFO,
+                siteName
+        );
+    }
+
     /**
      * Centralized method to create and save AuditLog entities
      */
@@ -73,7 +87,36 @@ public class AuditLogService {
                 .action(action)
                 .details(details)
                 .username(jwtAuth.getToken().getClaimAsString("preferred_username"))
-                .siteName(jwtAuth.getToken().getClaimAsString("group"))
+                .siteName("") //TODO: Get site name of the context
+                .entityId(entityId)
+                .severity(severity);
+
+        auditLogRepository.save(builder.build());
+    }
+
+        /**
+     * Centralized method to create and save AuditLog entities
+     */
+    private void createAndSaveAuditLogWithSiteNameCRUD (
+            AuditLog.LogType logType,
+            String entityType,
+            AuditLog.LogAction action,
+            String details,
+            String entityId,
+            AuditLog.LogSeverity severity,
+            String siteName) {
+
+        JwtAuthenticationToken jwtAuth = getJwtAuthenticationToken();
+        ZonedDateTime timestamp = dateTimeService.getCurrentDateTime();
+
+        AuditLog.AuditLogBuilder builder = AuditLog.builder()
+                .timestamp(timestamp)
+                .logType(logType)
+                .entityType(entityType)
+                .action(action)
+                .details(details)
+                .username(jwtAuth.getToken().getClaimAsString("preferred_username"))
+                .siteName(siteName)
                 .entityId(entityId)
                 .severity(severity);
 

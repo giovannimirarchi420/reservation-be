@@ -18,6 +18,7 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.keycloak.representations.idm.GroupRepresentation;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -84,10 +85,13 @@ public class ResourceService {
         Resource resource = resourceMapper.toEntity(resourceDTO);
         Resource savedResource = resourceRepository.save(resource);
 
+        String siteName = keycloakService.getSiteNameById(savedResource.getSiteId(), "Unknown site");
+
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("RESOURCE", savedResource.getId().toString()),
-                "Admin " + userId + "created resource " + savedResource.getName() + " in site " + savedResource.getSiteId() + "(id: " + savedResource.getId());
+                "Admin " + userId + "created resource " + savedResource.getName() + " in site " + savedResource.getSiteId() + "(id: " + savedResource.getId(),
+                siteName);
 
         webhookService.processResourceEvent(WebhookEventType.RESOURCE_CREATED, savedResource, savedResource);
 
@@ -151,10 +155,13 @@ public class ResourceService {
                     // Save the updated resource
                     Resource savedResource = resourceRepository.save(updatedResource);
 
+                    String siteName = keycloakService.getSiteNameById(savedResource.getSiteId(), "Unknown site");
+
                     auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                             AuditLog.LogAction.UPDATE,
                             new AuditLog.LogEntity("RESOURCE", savedResource.getId().toString()),
-                            "Admin "+ userId + " updated resource to: " + updatedResource);
+                            "Admin "+ userId + " updated resource to: " + updatedResource,
+                            siteName);
                     
                     webhookService.processResourceEvent(WebhookEventType.RESOURCE_UPDATED, savedResource, savedResource);
                     // Check if status has changed
@@ -185,10 +192,13 @@ public class ResourceService {
                     existingResource.setStatus(status);
                     Resource updatedResource = resourceRepository.save(existingResource);
 
+                    String siteName = keycloakService.getSiteNameById(updatedResource.getSiteId(), "Unknown site");
+
                     auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                             AuditLog.LogAction.UPDATE,
                             new AuditLog.LogEntity("RESOURCE", updatedResource.getId().toString()),
-                            "Admin "+ userId + "updated resource status to: "+ status.toString());
+                            "Admin "+ userId + "updated resource status to: "+ status.toString(),
+                            siteName);
                     
                     // Handle status change notifications
                     handleResourceStatusChange(updatedResource, oldStatus);
@@ -286,11 +296,14 @@ public class ResourceService {
         // 5. Finally delete the resource itself
         try {
             resourceRepository.delete(resource);
-            
+
+            String siteName = keycloakService.getSiteNameById(resource.getSiteId(), "Unknown site");
+
             auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                     AuditLog.LogAction.DELETE,
                     new AuditLog.LogEntity("RESOURCE", id.toString()),
-                    "Admin " + userId + " deleted resource: " + resource);
+                    "Admin " + userId + " deleted resource: " + resource,
+                    siteName);
             
             // Notify admins about deletion
             notificationService.createSystemNotification(

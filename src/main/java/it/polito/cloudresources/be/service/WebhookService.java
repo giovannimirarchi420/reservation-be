@@ -9,6 +9,7 @@ import it.polito.cloudresources.be.dto.webhooks.WebhookPayload;
 import it.polito.cloudresources.be.mapper.WebhookMapper;
 import it.polito.cloudresources.be.model.*;
 import it.polito.cloudresources.be.repository.ResourceRepository;
+import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import it.polito.cloudresources.be.repository.WebhookConfigRepository;
 import it.polito.cloudresources.be.repository.WebhookLogRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -46,6 +47,7 @@ public class WebhookService {
     private final WebhookConfigRepository webhookConfigRepository;
     private final WebhookLogRepository webhookLogRepository;
     private final ResourceRepository resourceRepository;
+    private final ResourceTypeRepository resourceTypeRepository;
     private final WebhookMapper webhookMapper;
     private final ObjectMapper objectMapper;
     private final AuditLogService auditLogService;
@@ -71,9 +73,21 @@ public class WebhookService {
             Resource resource = resourceRepository.findById(dto.getResourceId())
                     .orElseThrow(() -> new EntityNotFoundException("Resource not found with ID: " + dto.getResourceId()));
             
+            // Verify resource belongs to the selected site
+            if (!resource.getSiteId().equals(dto.getSiteId())) {
+                throw new IllegalArgumentException("The selected resource does not belong to the specified site");
+            }
+            
             if (!canManageWebhooksForResource(userId, resource)) {
                 throw new AccessDeniedException("You don't have permission to create webhooks for this resource");
             }
+        }
+        
+        // Check if resourceTypeId is specified and validate it belongs to the selected site
+        if (dto.getResourceTypeId() != null) {
+            resourceTypeRepository.findById(dto.getResourceTypeId())
+                    .filter(resourceType -> resourceType.getSiteId().equals(dto.getSiteId()))
+                    .orElseThrow(() -> new IllegalArgumentException("The selected resource type does not belong to the specified site"));
         }
         
         // Create webhook entity from DTO
@@ -87,13 +101,16 @@ public class WebhookService {
         
         // Save the webhook configuration
         WebhookConfig savedWebhook = webhookConfigRepository.save(webhookConfig);
+
+        String siteName = keycloakService.getSiteNameById(savedWebhook.getSiteId(), "Unknown site");
         
         // Log the creation
         auditLogService.logCrudAction(
                 AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("WEBHOOK", savedWebhook.getId().toString()),
-                "User " + userId + " created webhook " + savedWebhook.getName()
+                "User " + userId + " created webhook " + savedWebhook.getName(),
+                siteName
         );
         
         // Return DTO with the shared secret
@@ -126,13 +143,14 @@ public class WebhookService {
         
         // Save the updated webhook
         WebhookConfig savedWebhook = webhookConfigRepository.save(updatedWebhook);
-        
+        String siteName = keycloakService.getSiteNameById(savedWebhook.getSiteId(), "Unknown site");
         // Log the update
         auditLogService.logCrudAction(
                 AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.UPDATE,
                 new AuditLog.LogEntity("WEBHOOK", savedWebhook.getId().toString()),
-                "User " + userId + " updated webhook " + savedWebhook.getName()
+                "User " + userId + " updated webhook " + savedWebhook.getName(),
+                siteName
         );
         
         return webhookMapper.toDto(savedWebhook);
@@ -157,12 +175,16 @@ public class WebhookService {
                     webhookLogRepository.findByWebhookId(id).forEach(webhookLogRepository::delete);
                     webhookConfigRepository.deleteById(id);
                     
+                    String siteName = keycloakService.getSiteNameById(webhook.getSiteId(), "Unknown site");
+
+                    
                     // Log the deletion
                     auditLogService.logCrudAction(
                             AuditLog.LogType.ADMIN,
                             AuditLog.LogAction.DELETE,
                             new AuditLog.LogEntity("WEBHOOK", id.toString()),
-                            "User " + userId + " deleted webhook " + webhook.getName()
+                            "User " + userId + " deleted webhook " + webhook.getName(),
+                            siteName
                     );
                     
                     return true;

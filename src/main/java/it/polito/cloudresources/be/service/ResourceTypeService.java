@@ -9,6 +9,7 @@ import it.polito.cloudresources.be.repository.ResourceTypeRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 
+import org.keycloak.representations.idm.GroupRepresentation;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -88,10 +89,20 @@ public class ResourceTypeService {
         ResourceType resourceType = resourceTypeMapper.toEntity(resourceTypeDTO);
         ResourceType savedType = resourceTypeRepository.save(resourceType);
 
+        Optional<GroupRepresentation> groupRepresentation = keycloakService.getGroupById(savedType.getSiteId());
+        String siteName;
+
+        if(groupRepresentation.isPresent()) {
+            siteName = groupRepresentation.get().getName();
+        } else {
+            siteName = "Unknown site";
+        }
+
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.CREATE,
                 new AuditLog.LogEntity("RESOURCE-TYPE", savedType.getId().toString()),
-                "Admin " + userId + " created resource type: "+ savedType);
+                "Admin " + userId + " created resource type: "+ savedType,
+                siteName);
 
         return resourceTypeMapper.toDto(savedType);
     }
@@ -117,10 +128,20 @@ public class ResourceTypeService {
 
         ResourceType updatedType = resourceTypeRepository.save(resourceType);
 
+        Optional<GroupRepresentation> groupRepresentation = keycloakService.getGroupById(updatedType.getSiteId());
+        String siteName;
+
+        if(groupRepresentation.isPresent()) {
+            siteName = groupRepresentation.get().getName();
+        } else {
+            siteName = "Unknown site";
+        }
+
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.UPDATE,
                 new AuditLog.LogEntity("RESOURCE-TYPE", updatedType.getId().toString()),
-                "Admin " + userId + " updated resource type to: " + updatedType);
+                "Admin " + userId + " updated resource type to: " + updatedType,
+                siteName);
 
         return resourceTypeMapper.toDto(updatedType);
     }
@@ -148,13 +169,23 @@ public class ResourceTypeService {
             throw new AccessDeniedException("User does not have permission to delete resource types in this site");
         }
         
+        Optional<GroupRepresentation> groupRepresentation = keycloakService.getGroupById(resourceType.get().getSiteId());
+        String siteName;
+
+        if(groupRepresentation.isPresent()) {
+            siteName = groupRepresentation.get().getName();
+        } else {
+            siteName = "Unknown site";
+        }
+
         // Delete the resource type
         resourceTypeRepository.deleteById(id);
 
         auditLogService.logCrudAction(AuditLog.LogType.ADMIN,
                 AuditLog.LogAction.DELETE,
                 new AuditLog.LogEntity("RESOURCE-TYPE", id.toString()),
-                "Admin " + userId + " deleted resource type: " +resourceType.get() );
+                "Admin " + userId + " deleted resource type: " +resourceType.get(),
+                siteName);
     }
 
     private boolean canUpdateResourceTypeInSite(String userId, String siteId) {
