@@ -140,7 +140,7 @@ public class UserService {
                 .build();
 
         // Create user in Keycloak
-        String userId = keycloakService.createUser(userDTO, password, userDTO.getRoles());
+        String userId = keycloakService.createUser(userDTO, password);
 
         if (userId == null) {
             throw new RuntimeException("Failed to create user in Keycloak");

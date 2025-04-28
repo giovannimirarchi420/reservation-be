@@ -109,7 +109,7 @@ public class MockKeycloakService extends KeycloakService {
     }
 
     @Override
-    public String createUser(UserDTO userDTO, String password, Set<String> roles) {
+    public String createUser(UserDTO userDTO, String password) {
         String userId = UUID.randomUUID().toString();
 
         UserRepresentation user = new UserRepresentation();
@@ -131,6 +131,8 @@ public class MockKeycloakService extends KeycloakService {
         }
         userAttributes.put(userId, attributes);
 
+        Set<String> roles = userDTO.getRoles();
+        
         users.put(userId, user);
         userRoles.put(userId, roles != null ? new ArrayList<>(roles) : new ArrayList<>());
         userSites.put(userId, new HashSet<>());

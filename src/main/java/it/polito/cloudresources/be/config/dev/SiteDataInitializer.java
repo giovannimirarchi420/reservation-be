@@ -55,7 +55,7 @@ public class SiteDataInitializer {
                         .roles(adminRoles)
                         .build();
                 
-                String globalAdminId = keycloakService.createUser(adminDto, adminPassword, adminRoles);
+                String globalAdminId = keycloakService.createUser(adminDto, adminPassword);
                 log.info("Created global admin user: {} with ID {}", adminUsername, globalAdminId);
 
                 // Add global admin to all sites
@@ -106,7 +106,7 @@ public class SiteDataInitializer {
                     .roles(roles)
                     .build();
             
-            String userId = keycloakService.createUser(userDto, password, roles);
+            String userId = keycloakService.createUser(userDto, password);
             log.info("Created user: {} with ID {}", username, userId);
             
             // Add to site
@@ -148,7 +148,7 @@ public class SiteDataInitializer {
                     .roles(roles)
                     .build();
             
-            String userId = keycloakService.createUser(userDto, password, roles);
+            String userId = keycloakService.createUser(userDto, password);
             log.info("Created user: {} with ID {}", username, userId);
 
             // Add user to site

@@ -166,7 +166,7 @@ public class KeycloakService {
             @CacheEvict(value = USERS_CACHE, allEntries = true),
             @CacheEvict(value = USER_BY_ROLE_CACHE, allEntries = true)
     })
-    public String createUser(UserDTO userDTO, String password, Set<String> roles) {
+    public String createUser(UserDTO userDTO, String password) {
         try {
             log.debug("Attempting to create user: username={}, email={}, firstName={}, lastName={}",
                     userDTO.getUsername(), userDTO.getEmail(), userDTO.getFirstName(), userDTO.getLastName());
@@ -187,11 +187,12 @@ public class KeycloakService {
             }
 
             assignGroupsToUser(userId);
-
+            Set<String> roles = userDTO.getRoles();
             // Assign roles to user
-            if (roles != null && !roles.isEmpty()) {
+            if (Objects.nonNull(roles) && !roles.isEmpty()) {
                 for (String role : roles) {
-                    assignRoleToUser(userId, role);
+                    log.info("Assegno il ruolo {} all'utente {}", role, userId);
+                    assignRoleToUser(userId, role.toLowerCase());
                 }
             }
 
