@@ -17,8 +17,8 @@ if [ ! -f pom.xml ]; then
     exit 1
 fi
 
-# Utilizzo di sed che è più portabile tra sistemi Unix/Linux/macOS
-VERSION=$(sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p' pom.xml | head -1 | sed 's/-SNAPSHOT//')
+
+VERSION=$(sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p' pom.xml | head -1)
 if [ -z "$VERSION" ]; then
     echo -e "${RED}Error: Could not extract version from pom.xml${NC}"
     echo -e "${YELLOW}Using default version: 1.0.0${NC}"

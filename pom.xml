@@ -5,7 +5,7 @@
     
     <groupId>it.polito.cloudresources.be</groupId>
     <artifactId>resource-management</artifactId>
-    <version>1.5.1</version>
+    <version>1.6.2-postgres</version>
     <name>resource-management</name>
     <description>Cloud Resource Management Backend</description>
     
@@ -140,9 +140,9 @@
             </properties>
         </profile>
 
-        <!-- Production profile -->
+        <!-- Production profiles -->
         <profile>
-            <id>pro</id>
+            <id>pro-oracle</id>
             <dependencies>
                 <dependency>
                     <groupId>com.oracle.database.jdbc</groupId>
@@ -153,6 +153,19 @@
                     <groupId>com.oracle.database.jdbc</groupId>
                     <artifactId>ucp</artifactId>
                     <version>23.3.0.23.09</version>
+                </dependency>
+            </dependencies>
+            <properties>
+                <spring.profiles.active>pro</spring.profiles.active>
+            </properties>
+        </profile>
+        <profile>
+            <id>pro-postgres</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.postgresql</groupId>
+                    <artifactId>postgresql</artifactId>
+                    <scope>runtime</scope>
                 </dependency>
             </dependencies>
             <properties>

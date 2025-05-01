@@ -2,7 +2,7 @@ FROM maven:3.9.9-eclipse-temurin-23-alpine AS build
 
 WORKDIR /app
 COPY . .
-RUN ./mvnw clean package -Ppro -DskipTests
+RUN ./mvnw clean package -Ppro-postgres -DskipTests
 
 FROM eclipse-temurin:23-jdk
 
@@ -18,7 +18,7 @@ RUN keytool -import -trustcacerts -keystore "$JAVA_HOME/lib/security/cacerts" \
 
 # Default environment variables
 ENV SERVER_PORT=8080
-ENV SPRING_PROFILES_ACTIVE=pro
+ENV SPRING_PROFILES_ACTIVE=pro,postgres
 
 EXPOSE 8080
 
