@@ -17,7 +17,6 @@ if [ ! -f pom.xml ]; then
     exit 1
 fi
 
-
 VERSION=$(sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p' pom.xml | head -1)
 if [ -z "$VERSION" ]; then
     echo -e "${RED}Error: Could not extract version from pom.xml${NC}"
@@ -27,41 +26,53 @@ else
     echo -e "${GREEN}Found version: $VERSION${NC}"
 fi
 
-# Full image names with different tags
-VERSION_TAG="$REGISTRY/$IMAGE_NAME:$VERSION"
-LATEST_TAG="$REGISTRY/$IMAGE_NAME:latest"
+# Define database types to build
+DB_TYPES=("postgres" "oracle")
 
-echo -e "${GREEN}Building Docker image...${NC}"
-docker build -t $VERSION_TAG -t $LATEST_TAG .
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}Successfully built images:${NC}"
-    echo -e "  - $VERSION_TAG"
-    echo -e "  - $LATEST_TAG"
+# Build and push for each database type
+for db_type in "${DB_TYPES[@]}"; do
+    # Define tags for this db type
+    VERSION_TAG="$REGISTRY/$IMAGE_NAME:$VERSION-$db_type"
+    LATEST_TAG="$REGISTRY/$IMAGE_NAME:latest-$db_type"
     
-    echo -e "${GREEN}Pushing images to registry: $REGISTRY${NC}"
+    echo -e "\n${GREEN}Building Docker image for database type: $db_type...${NC}"
+    docker build \
+        --build-arg DB_TYPE=$db_type \
+        -t $VERSION_TAG \
+        -t $LATEST_TAG .
     
-    # Push version tag
-    echo -e "${YELLOW}Pushing $VERSION_TAG...${NC}"
-    docker push $VERSION_TAG
-    VERSION_PUSH_STATUS=$?
-    
-    # Push latest tag
-    echo -e "${YELLOW}Pushing $LATEST_TAG...${NC}"
-    docker push $LATEST_TAG
-    LATEST_PUSH_STATUS=$?
-    
-    if [ $VERSION_PUSH_STATUS -eq 0 ] && [ $LATEST_PUSH_STATUS -eq 0 ]; then
-        echo -e "${GREEN}Successfully pushed all images${NC}"
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Successfully built images for $db_type:${NC}"
+        echo -e "  - $VERSION_TAG"
+        echo -e "  - $LATEST_TAG"
+        
+        echo -e "${GREEN}Pushing images to registry: $REGISTRY${NC}"
+        
+        # Push version tag
+        echo -e "${YELLOW}Pushing $VERSION_TAG...${NC}"
+        docker push $VERSION_TAG
+        VERSION_PUSH_STATUS=$?
+        
+        # Push latest tag
+        echo -e "${YELLOW}Pushing $LATEST_TAG...${NC}"
+        docker push $LATEST_TAG
+        LATEST_PUSH_STATUS=$?
+        
+        if [ $VERSION_PUSH_STATUS -eq 0 ] && [ $LATEST_PUSH_STATUS -eq 0 ]; then
+            echo -e "${GREEN}Successfully pushed images for $db_type${NC}"
+        else
+            echo -e "${RED}Failed to push one or more images for $db_type${NC}"
+            exit 1
+        fi
     else
-        echo -e "${RED}Failed to push one or more images${NC}"
+        echo -e "${RED}Failed to build images for $db_type${NC}"
         exit 1
     fi
-else
-    echo -e "${RED}Failed to build images${NC}"
-    exit 1
-fi
+done
 
+echo -e "\n${GREEN}All images have been built and pushed successfully${NC}"
 echo -e "${GREEN}Images are now available at:${NC}"
-echo -e "  - $VERSION_TAG"
-echo -e "  - $LATEST_TAG"
+for db_type in "${DB_TYPES[@]}"; do
+    echo -e "  - $REGISTRY/$IMAGE_NAME:$VERSION-$db_type"
+    echo -e "  - $REGISTRY/$IMAGE_NAME:latest-$db_type"
+done
