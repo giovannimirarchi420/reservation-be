@@ -21,6 +21,10 @@ This system enables organizations to:
 - Send and manage notifications to users
 - Support hierarchical resource structures with parent-child relationships
 - Store and manage SSH public keys for accessing resources
+- Manage resources across different physical or logical locations (Sites).
+- Support for Global Administrators and Site Administrators with scoped permissions.
+- Notify external systems about booking events via Webhooks.
+- Track important actions through Audit Logs.
 
 ## 🏗️ Architecture
 
@@ -38,7 +42,7 @@ The application follows a standard Spring Boot architecture:
 The application uses OAuth2/OpenID Connect authentication through Keycloak:
 
 - JWT-based authentication
-- Role-based authorization (ADMIN and USER roles)
+- Role-based authorization (`global_admin`, `site_admin`, `USER` roles)
 - Fine-grained method-level security
 - Development mode with simplified authentication
 
@@ -365,6 +369,118 @@ PUT /users/me/ssh-key
 ```
 DELETE /users/me/ssh-key
 ```
+
+### Sites
+
+Manage physical or logical locations for resources.
+
+#### Get All Sites
+```
+GET /sites
+```
+
+#### Get Site by ID
+```
+GET /sites/{id}
+```
+
+#### Create Site (Global Admin only)
+```
+POST /sites
+```
+```json
+{
+  "name": "Site Name",
+  "location": "Site Location"
+}
+```
+
+#### Update Site (Global Admin only)
+```
+PUT /sites/{id}
+```
+
+#### Delete Site (Global Admin only)
+```
+DELETE /sites/{id}
+```
+
+#### Get Resources for Site
+```
+GET /sites/{siteId}/resources
+```
+
+#### Assign Site Admin (Global Admin only)
+```
+POST /sites/{siteId}/admins
+```
+```json
+{
+  "userId": "user-keycloak-id"
+}
+```
+
+#### Remove Site Admin (Global Admin only)
+```
+DELETE /sites/{siteId}/admins/{userId}
+```
+
+### Webhooks
+
+Configure webhooks to notify external systems about events (e.g., bookings).
+
+#### Get All Webhooks (Global Admin only)
+```
+GET /webhooks
+```
+
+#### Get Webhook by ID (Global Admin only)
+```
+GET /webhooks/{id}
+```
+
+#### Create Webhook (Global Admin only)
+```
+POST /webhooks
+```
+```json
+{
+  "url": "https://external.system/webhook-endpoint",
+  "eventTypes": ["BOOKING_CREATED", "BOOKING_UPDATED", "BOOKING_DELETED"],
+  "secret": "optional-secret-for-verification",
+  "isActive": true
+}
+```
+
+#### Update Webhook (Global Admin only)
+```
+PUT /webhooks/{id}
+```
+
+#### Delete Webhook (Global Admin only)
+```
+DELETE /webhooks/{id}
+```
+
+#### Test Webhook (Global Admin only)
+```
+POST /webhooks/{id}/test
+```
+
+### Audit Logs
+
+Track significant actions performed within the system.
+
+#### Get Audit Logs (Global Admin only)
+```
+GET /audit-logs
+```
+Optional query parameters:
+- `userId`: Filter by user ID
+- `action`: Filter by action type (e.g., `RESOURCE_CREATE`, `BOOKING_DELETE`)
+- `startDate`: Filter logs from this date
+- `endDate`: Filter logs up to this date
+- `page`, `size`: For pagination
 
 ### Notifications
 
