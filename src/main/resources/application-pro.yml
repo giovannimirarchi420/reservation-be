@@ -41,14 +41,10 @@ spring:
 keycloak:
   auth-server-url: ${KEYCLOAK_AUTH_SERVER_URL}
   realm: ${KEYCLOAK_REALM}
-  resource: ${KEYCLOAK_REALM}-app
-  credentials:
+  resource: ${KEYCLOAK_CLIENT_ID}
+  credentials: 
     secret: ${KEYCLOAK_CLIENT_SECRET}
   use-resource-role-mappings: true
-  bearer-only: true
-  admin:
-    username: ${KEYCLOAK_ADMIN_USER}
-    password: ${KEYCLOAK_ADMIN_PASSWORD}
 
 # Application specific settings
 app:

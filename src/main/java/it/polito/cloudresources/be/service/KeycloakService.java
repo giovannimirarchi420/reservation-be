@@ -4,6 +4,8 @@ import it.polito.cloudresources.be.dto.users.UserDTO;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
+
+import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.keycloak.admin.client.resource.GroupResource;
@@ -67,23 +69,16 @@ public class KeycloakService {
     @Value("${keycloak.credentials.secret}")
     private String clientSecret;
 
-    // Admin credentials - in a production environment should come from secure configuration
-    @Value("${keycloak.admin.username:admin}")
-    private String adminUsername;
-
-    @Value("${keycloak.admin.password:admin}")
-    private String adminPassword;
-
     /**
      * Creates an admin Keycloak client
      */
     protected Keycloak getKeycloakClient() {
         return KeycloakBuilder.builder()
                 .serverUrl(authServerUrl)
-                .realm("master")
-                .clientId("admin-cli")
-                .username(adminUsername)
-                .password(adminPassword)
+                .realm(realm)
+                .clientId(clientId)
+                .clientSecret(clientSecret)
+                .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
                 .build();
     }
 
