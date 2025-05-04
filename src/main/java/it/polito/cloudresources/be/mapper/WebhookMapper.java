@@ -34,7 +34,7 @@ public class WebhookMapper {
         }
         
         WebhookConfig entity = new WebhookConfig();
-        entity.setId(dto.getId());
+        
         entity.setName(dto.getName());
         entity.setUrl(dto.getUrl());
         entity.setEventType(dto.getEventType());

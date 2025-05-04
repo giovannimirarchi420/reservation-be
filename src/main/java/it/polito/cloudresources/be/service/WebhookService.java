@@ -96,7 +96,6 @@ public class WebhookService {
         // Generate a single shared secret key
         String sharedSecret = generateRandomKey();
         
-        // Store the secret - in a real production environment, this should be securely hashed
         webhookConfig.setSecret(sharedSecret);
         
         // Save the webhook configuration
