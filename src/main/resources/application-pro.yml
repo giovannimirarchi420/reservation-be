@@ -1,8 +1,6 @@
 # Server Configuration
 server:
   port: ${SERVER_PORT}
-  servlet:
-    context-path: /api
 
 # Database Configuration
 spring:
@@ -50,3 +48,14 @@ keycloak:
 app:
   cors:
     allowed-origins: ${FRONTEND_APP_URL},http://localhost:3000
+
+# Actuator configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info # Expose health and info endpoints
+  endpoint:
+    health:
+      probes:
+        enabled: true # Enable Kubernetes probes
