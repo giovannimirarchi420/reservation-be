@@ -29,6 +29,8 @@ import org.springframework.web.client.RestTemplate;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -600,7 +602,7 @@ public class WebhookService {
         byte[] key = new byte[32]; // 256 bits
         SecureRandom secureRandom = new SecureRandom();
         secureRandom.nextBytes(key);
-        return Base64.getEncoder().encodeToString(key);
+        return new String(Base64.getEncoder().encode(key), StandardCharsets.UTF_8);   
     }
     
     /**
