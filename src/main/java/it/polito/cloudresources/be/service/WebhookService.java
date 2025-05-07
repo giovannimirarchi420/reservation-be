@@ -65,11 +65,6 @@ public class WebhookService {
      */
     @Transactional
     public WebhookConfigResponseDTO createWebhook(WebhookConfigDTO dto, String userId) {
-        // Validate input: at least one of resourceId or resourceTypeId must be provided
-        if (!dto.getEventType().equals(WebhookEventType.ALL) && dto.getResourceId() == null && dto.getResourceTypeId() == null) {
-            throw new IllegalArgumentException("Either resource or resource type must be specified, or the event type must be ALL");
-        }
-        
         // Check authorization if resource specified
         if (dto.getResourceId() != null) {
             Resource resource = resourceRepository.findById(dto.getResourceId())
@@ -131,19 +126,38 @@ public class WebhookService {
     public WebhookConfigDTO updateWebhook(Long id, WebhookConfigDTO dto, String userId) {
         WebhookConfig existingWebhook = webhookConfigRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Webhook not found with ID: " + id));
-        
+
         // Check authorization based on the webhook's current resource/resource type
         if (!canManageWebhook(userId, existingWebhook)) {
             throw new AccessDeniedException("You don't have permission to update this webhook");
         }
-        
-        // Update fields but preserve the ID and secret
-        dto.setId(id);
-        WebhookConfig updatedWebhook = webhookMapper.toEntity(dto);
-        updatedWebhook.setSecret(existingWebhook.getSecret()); // Keep the original secret
-        
+
+        // Prevent modification of siteId, resourceId, and resourceTypeId
+        if (dto.getSiteId() != null && !dto.getSiteId().equals(existingWebhook.getSiteId())) {
+            throw new IllegalArgumentException("Cannot update siteId. Please create a new webhook instead.");
+        }
+        // Check if the resourceId in the DTO is different from the existing one
+        Long existingResourceId = existingWebhook.getResource() != null ? existingWebhook.getResource().getId() : null;
+        if (dto.getResourceId() != null && !dto.getResourceId().equals(existingResourceId)) {
+            throw new IllegalArgumentException("Cannot update resourceId. Please create a new webhook instead.");
+        }
+        // Check if the resourceTypeId in the DTO is different from the existing one
+        Long existingResourceTypeId = existingWebhook.getResourceType() != null ? existingWebhook.getResourceType().getId() : null;
+        if (dto.getResourceTypeId() != null && !dto.getResourceTypeId().equals(existingResourceTypeId)) {
+            throw new IllegalArgumentException("Cannot update resourceTypeId. Please create a new webhook instead.");
+        }
+
+        // Update allowed fields
+        existingWebhook.setName(dto.getName());
+        existingWebhook.setUrl(dto.getUrl());
+        existingWebhook.setEventType(dto.getEventType());
+        existingWebhook.setEnabled(dto.isEnabled());
+        existingWebhook.setMaxRetries(dto.getMaxRetries());
+        existingWebhook.setRetryDelaySeconds(dto.getRetryDelaySeconds());
+        // Secret and ID are not updated from DTO
+
         // Save the updated webhook
-        WebhookConfig savedWebhook = webhookConfigRepository.save(updatedWebhook);
+        WebhookConfig savedWebhook = webhookConfigRepository.save(existingWebhook);
         String siteName = keycloakService.getSiteNameById(savedWebhook.getSiteId(), "Unknown site");
         // Log the update
         auditLogService.logCrudAction(
@@ -327,6 +341,7 @@ public class WebhookService {
      * @param data The event data
      */
     @Async
+    @Transactional
     public void processResourceEvent(WebhookEventType eventType, Resource resource, Object data) {
         try {
             log.debug("Processing resource event {} for resource {}", eventType, resource.getId());
