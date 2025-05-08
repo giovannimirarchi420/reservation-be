@@ -20,7 +20,7 @@ jobs:
       - name: Extract version from pom.xml
         id: extract_version
         run: |
-          VERSION=$(xmllint --xpath "string(//project/version)" pom.xml)
+          VERSION=$(xmllint --xpath "//*[local-name()='project']/*[local-name()='version']/text()" pom.xml)
           echo "VERSION=$VERSION"
           echo "version=$VERSION" >> $GITHUB_ENV
 
