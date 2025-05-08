@@ -35,7 +35,7 @@ build/
 .vscode/
 
 ### LOGS ###
-logs/
+/logs/
 
 ### Certificate for the K8S Docker Image ###
 certificate.crt
