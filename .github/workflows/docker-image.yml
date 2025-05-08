@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Images with DB_TYPE
 
 on:
   workflow_dispatch: # Allows manual triggering of the workflow
@@ -20,7 +20,7 @@ jobs:
       - name: Extract version from pom.xml
         id: extract_version
         run: |
-          VERSION=$(xmllint --xpath "//*[local-name()='project']/*[local-name()='version']/text()" pom.xml)
+          VERSION=$(xmllint --xpath "string(//project/version)" pom.xml)
           echo "VERSION=$VERSION"
           echo "version=$VERSION" >> $GITHUB_ENV
 
@@ -31,17 +31,25 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }} # DockerHub username stored as a secret
           password: ${{ secrets.DOCKER_PASSWORD }} # DockerHub password stored as a secret
 
-      # Step 5: Set up Docker Buildx (for advanced Docker builds)
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      # Step 6: Build and push the Docker image
-      - name: Build and push Docker image
+      # Step 5: Build and push Docker image for DB_TYPE=postgres
+      - name: Build and push Docker image (Postgres)
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/reservation-be:${{ env.version }}
+          tags: ${{ secrets.DOCKER_USERNAME }}/reservation-be:${{ env.version }}-postgres
+          build-args: |
+            DB_TYPE=postgres
+
+      # Step 6: Build and push Docker image for DB_TYPE=oracle
+      - name: Build and push Docker image (Oracle)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/reservation-be:${{ env.version }}-oracle
+          build-args: |
+            DB_TYPE=oracle
 
       # Step 7 (Optional): Log out of DockerHub
       - name: Log out of DockerHub
