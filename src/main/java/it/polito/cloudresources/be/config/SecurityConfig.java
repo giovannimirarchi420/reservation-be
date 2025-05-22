@@ -18,7 +18,15 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtException;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
@@ -54,6 +62,8 @@ public class SecurityConfig {
     public SecurityConfig(RequestLoggingFilter requestLoggingFilter) {
         this.requestLoggingFilter = requestLoggingFilter;
     }
+    
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
     
     /**
      * Configure security for development environment
@@ -164,39 +174,39 @@ public class SecurityConfig {
     }
 
     /**
+     * Custom JWT Decoder to relax audience/issuer validation for Keycloak 16 compatibility
+     */
+    @Bean
+    @Profile("!dev")
+    public JwtDecoder jwtDecoder(@Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
+        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(issuerUri + "/protocol/openid-connect/certs").build();
+        jwtDecoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuerUri));
+        return jwtDecoder;
+    }
+    
+    /**
      * Extract roles from JWT token and convert them to Spring Security GrantedAuthorities
      */
     @Bean
     @Profile("!dev")
     public Converter<Jwt, Collection<GrantedAuthority>> jwtGrantedAuthoritiesConverter() {
         JwtGrantedAuthoritiesConverter defaultConverter = new JwtGrantedAuthoritiesConverter();
-
-        return new Converter<Jwt, Collection<GrantedAuthority>>() {
-            @Override
-            public Collection<GrantedAuthority> convert(Jwt jwt) {
-                Collection<GrantedAuthority> defaultAuthorities = defaultConverter.convert(jwt);
-
-                // Get realm roles from JWT claims
-                Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-                if (realmAccess == null || !realmAccess.containsKey("roles")) {
-                    return defaultAuthorities;
-                }
-
-                @SuppressWarnings("unchecked")
-                List<String> realmRoles = (List<String>) realmAccess.get("roles");
-
-                // Combine all roles and add ROLE_ prefix required by Spring Security
-                List<SimpleGrantedAuthority> authorities = realmRoles.stream().map(role -> "ROLE_" + role.toUpperCase())
-                        .distinct()
-                        .map(SimpleGrantedAuthority::new)
-                        .collect(Collectors.toList());
-
-                return Stream.concat(
-                                defaultAuthorities.stream(),
-                                authorities.stream()
-                        )
-                        .collect(Collectors.toList());
+        return jwt -> {
+            log.debug("JWT claims: {}", jwt.getClaims());
+            Collection<GrantedAuthority> defaultAuthorities = defaultConverter.convert(jwt);
+            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+            if (realmAccess == null || !realmAccess.containsKey("roles")) {
+                log.warn("No realm_access.roles found in JWT");
+                return defaultAuthorities;
             }
+            @SuppressWarnings("unchecked")
+            List<String> realmRoles = (List<String>) realmAccess.get("roles");
+            List<SimpleGrantedAuthority> authorities = realmRoles.stream().map(role -> "ROLE_" + role.toUpperCase())
+                    .distinct()
+                    .map(SimpleGrantedAuthority::new)
+                    .collect(Collectors.toList());
+            return Stream.concat(defaultAuthorities.stream(), authorities.stream())
+                    .collect(Collectors.toList());
         };
     }
 }
