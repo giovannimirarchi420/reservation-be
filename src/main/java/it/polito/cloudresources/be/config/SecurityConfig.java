@@ -180,7 +180,7 @@ public class SecurityConfig {
 
                 if (resourceAccess != null) {
                     @SuppressWarnings("unchecked")
-                    Map<String, Object> clientAccess = (Map<String, Object>) resourceAccess.get("resource-management-app");
+                    Map<String, Object> clientAccess = (Map<String, Object>) resourceAccess.get("resource-management-fe"); //TODO set this as configuration
 
                     if (clientAccess != null && clientAccess.containsKey("roles")) {
                         @SuppressWarnings("unchecked")
