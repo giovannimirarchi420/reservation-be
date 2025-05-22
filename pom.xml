@@ -18,7 +18,7 @@
 
     <properties>
         <java.version>23</java.version>
-        <keycloak.version>24.0.1</keycloak.version>
+        <keycloak.version>16.1.1</keycloak.version>
         <springdoc.version>2.3.0</springdoc.version>
         <lombok.version>1.18.32</lombok.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>

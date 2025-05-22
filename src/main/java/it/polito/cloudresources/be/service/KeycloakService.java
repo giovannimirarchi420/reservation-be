@@ -2,7 +2,7 @@ package it.polito.cloudresources.be.service;
 
 import it.polito.cloudresources.be.dto.users.UserDTO;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.core.Response;
+import javax.ws.rs.core.Response; // Correct import for Keycloak 16.1.1
 import lombok.extern.slf4j.Slf4j;
 
 import org.keycloak.OAuth2Constants;
@@ -24,6 +24,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import javax.ws.rs.NotFoundException; // Added for Keycloak 16.1.1 compatibility
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -110,10 +111,12 @@ public class KeycloakService {
     public Optional<UserRepresentation> getUserByUsername(String username) {
         try {
             log.debug("Cache miss: Fetching user by username '{}'", username);
-            List<UserRepresentation> users = getRealmResource().users().search(username, true);
+            // Keycloak 16.1.1 admin client does not have search(username, exact)
+            // Using search by username field, first result, max 1.
+            List<UserRepresentation> users = getRealmResource().users().search(username, null, null, null, 0, 1);
             return users.isEmpty() ? Optional.empty() : Optional.of(users.get(0));
         } catch (Exception e) {
-            log.error("Error fetching user from Keycloak", e);
+            log.error("Error fetching user from Keycloak by username", e);
             return Optional.empty();
         }
     }
@@ -389,17 +392,36 @@ public class KeycloakService {
      * Create realm roles in Keycloak if they don't exist
      */
     public void ensureRealmRoles(String... roleNames) {
-        try {
-            for (String roleName : roleNames) {
-                if (getRealmResource().roles().get(roleName).toRepresentation() == null) {
-                    RoleRepresentation role = new RoleRepresentation();
-                    role.setName(roleName);
-                    getRealmResource().roles().create(role);
-                    log.info("Created role in Keycloak: {}", roleName);
-                }
+        RealmResource realmResource = getRealmResource(); // Cache realm resource for multiple calls
+        for (String roleName : roleNames) {
+            try {
+                // Attempt to get the role.
+                // In Keycloak 16.1.1, if the role doesn't exist, .toRepresentation() on the proxy
+                // or .get(roleName) itself might throw NotFoundException.
+                realmResource.roles().get(roleName).toRepresentation(); // This line checks existence
+                log.debug("Role {} already exists in Keycloak.", roleName);
+            } catch (NotFoundException e) {
+                // Role does not exist, so create it
+                log.info("Role {} not found in Keycloak. Creating...", roleName);
+                createRoleInKeycloakInternal(realmResource, roleName);
+            } catch (Exception e) {
+                // Catch other potential errors during role check or creation
+                log.error("Error ensuring realm role {} in Keycloak: {}", roleName, e.getMessage(), e);
             }
+        }
+    }
+
+    // Helper method to create a role, used by ensureRealmRoles
+    private void createRoleInKeycloakInternal(RealmResource realmResource, String roleName) {
+        try {
+            RoleRepresentation role = new RoleRepresentation();
+            role.setName(roleName);
+            realmResource.roles().create(role);
+            log.info("Created role in Keycloak: {}", roleName);
         } catch (Exception e) {
-            log.error("Error ensuring realm roles in Keycloak", e);
+            // Log creation-specific error
+            log.error("Error creating role {} in Keycloak: {}", roleName, e.getMessage(), e);
+            // Depending on error handling strategy, might rethrow or handle differently
         }
     }
 
@@ -572,24 +594,32 @@ public class KeycloakService {
     })
     public boolean deleteGroup(String groupId) {
         try {
-            // Check if the site exists
-            GroupResource groupResource = getRealmResource().groups().group(groupId);
-            GroupRepresentation group = groupResource.toRepresentation();
+            RealmResource realmResource = getRealmResource();
+            GroupResource groupResource = realmResource.groups().group(groupId);
+            GroupRepresentation group = groupResource.toRepresentation(); // This will throw NotFoundException if group doesn't exist
+            
             String roleToRemove = getSiteAdminRoleName(group.getName());
 
-            if (group != null) {
-                // Delete the site
-                groupResource.remove();
-                log.info("Deleted site with ID: {}", groupId);
-                getRealmResource().roles().deleteRole(roleToRemove);
+            // Delete the group
+            groupResource.remove();
+            log.info("Deleted group with ID: {}", groupId);
+
+            // Attempt to delete the associated role
+            try {
+                realmResource.roles().deleteRole(roleToRemove);
                 log.info("Deleted role: {}", roleToRemove);
-                return true;
-            } else {
-                log.warn("Site with ID {} not found for deletion", groupId);
-                return false;
+            } catch (NotFoundException e) {
+                log.warn("Role {} not found, could not delete it or it was already deleted.", roleToRemove);
+            } catch (Exception e) {
+                log.error("Error deleting role {}: {}", roleToRemove, e.getMessage(), e);
+                // Decide if this failure should cause the whole operation to return false
             }
+            return true;
+        } catch (NotFoundException e) {
+            log.warn("Group with ID {} not found for deletion.", groupId);
+            return false; // Group didn't exist, so deletion is effectively false from a "did I delete it now?" perspective
         } catch (Exception e) {
-            log.error("Error deleting site with ID: {}", groupId, e);
+            log.error("Error deleting group with ID: {}", groupId, e);
             return false;
         }
     }
@@ -657,19 +687,29 @@ public class KeycloakService {
      * Creates a site user role when a new site is created
      */
     public boolean createSiteAdminRole(String siteName) {
+        RealmResource realmResource = getRealmResource();
+        String roleName = getSiteAdminRoleName(siteName);
         try {
-            String roleName = getSiteAdminRoleName(siteName);
-
-            RoleRepresentation role = new RoleRepresentation();
-            role.setName(roleName);
-            role.setDescription("User role for site: " + siteName);
-            getRealmResource().roles().create(role);
-            
-            log.info("Created site user role: {}", roleName);
-            
-            return true;
-        } catch (Exception e) {
-            log.error("Error creating site user role: {}", e.getMessage(), e);
+            realmResource.roles().get(roleName).toRepresentation();
+            log.info("Site admin role {} already exists.", roleName);
+            return true; // Role already exists, consider it successful for this context
+        } catch (NotFoundException e) {
+            // Role does not exist, proceed to create
+            log.debug("Site admin role {} does not exist. Creating...", roleName);
+            try {
+                RoleRepresentation role = new RoleRepresentation();
+                role.setName(roleName);
+                role.setDescription("User role for site: " + siteName);
+                realmResource.roles().create(role);
+                log.info("Created site admin role: {}", roleName);
+                return true;
+            } catch (Exception creationEx) {
+                log.error("Error creating site admin role {}: {}", roleName, creationEx.getMessage(), creationEx);
+                return false;
+            }
+        } catch (Exception ex) {
+            // Other errors during role check
+            log.error("Error checking existence of site admin role {}: {}", roleName, ex.getMessage(), ex);
             return false;
         }
     }
@@ -706,16 +746,23 @@ public class KeycloakService {
             throw new AccessDeniedException("User can't remove site admin role in this site");
         }
 
-        String roleName = getSiteAdminRoleName(getGroupNameById(siteId));
-
+        String roleName = getSiteAdminRoleName(getGroupNameById(siteId)); // This can throw if group not found
         UserResource userResource = getRealmResource().users().get(userId);
-        RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
-
-        if (Objects.nonNull(role)) {
-            userResource.roles().realmLevel().remove(Collections.singletonList(role));
+        
+        try {
+            RoleRepresentation roleToRemove = getRealmResource().roles().get(roleName).toRepresentation();
+            if (roleToRemove == null) {
+                 log.warn("Role {} to remove was found but its representation is null. Cannot remove.", roleName);
+                 throw new RuntimeException("Error removing site admin role: Role representation is null.");
+            }
+            userResource.roles().realmLevel().remove(Collections.singletonList(roleToRemove));
             log.info("Removed site admin role {} from user {}", roleName, userId);
-        } else {
-            throw new RuntimeException("Error removing site admin role, please try again");
+        } catch (NotFoundException e) {
+            log.warn("Role {} not found, so it cannot be removed from user {}. Assuming effectively removed.", roleName, userId);
+            // Role to remove doesn't exist, so user effectively doesn't have it.
+        } catch (Exception e) {
+            log.error("Error removing site admin role {} from user {}: {}", roleName, userId, e.getMessage(), e);
+            throw new RuntimeException("Error removing site admin role, please try again", e);
         }
     }
 
@@ -754,8 +801,9 @@ public class KeycloakService {
     public List<String> getUserAdminGroups(String userId) {
         try {
             log.debug("Cache miss: Fetching admin groups for user '{}'", userId);
-            // First check if the user exists
-            UserRepresentation user = getRealmResource().users().get(userId).toRepresentation();
+            // First check if the user exists by trying to fetch their representation.
+            // This will throw an exception if the user doesn't exist, which is caught below.
+            getRealmResource().users().get(userId).toRepresentation(); 
             
             // We need to get the user's roles directly instead of relying on groups
             List<String> roles = getUserRoles(userId);
@@ -770,6 +818,9 @@ public class KeycloakService {
                 })
                 .collect(Collectors.toList());
                 
+        } catch (NotFoundException e) {
+            log.warn("User with ID {} not found when trying to fetch admin groups.", userId);
+            return new ArrayList<>(); // User not found, so no admin groups
         } catch (Exception e) {
             log.error("Error getting admin sites for user {}", userId, e);
             return new ArrayList<>();
@@ -811,9 +862,17 @@ public class KeycloakService {
             UserResource userResource = getRealmResource().users().get(userId);
             RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
             
+            if (role == null) { // Should ideally be caught by NotFoundException if role doesn't exist
+                log.error("Role {} not found or its representation is null. Cannot assign to user {}.", roleName, userId);
+                return false;
+            }
+            
             userResource.roles().realmLevel().add(Collections.singletonList(role));
             log.info("Assigned role {} to user {}", roleName, userId);
             return true;
+        } catch (NotFoundException e) {
+            log.error("Role {} not found. Cannot assign to user {}. Ensure role exists.", roleName, userId, e);
+            return false;
         } catch (Exception e) {
             log.error("Error assigning role {} to user {}", roleName, userId, e);
             return false;
