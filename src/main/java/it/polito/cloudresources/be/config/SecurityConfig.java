@@ -21,11 +21,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import it.polito.cloudresources.be.config.log.RequestLoggingFilter;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -45,6 +49,12 @@ public class SecurityConfig {
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
     
+    private final RequestLoggingFilter requestLoggingFilter;
+
+    public SecurityConfig(RequestLoggingFilter requestLoggingFilter) {
+        this.requestLoggingFilter = requestLoggingFilter;
+    }
+    
     /**
      * Configure security for development environment
      */
@@ -60,7 +70,8 @@ public class SecurityConfig {
                         .anyRequest().permitAll()
                 )
                 .httpBasic(httpBasic -> {})
-                .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.sameOrigin()));
+                .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.sameOrigin()))
+                .addFilterAfter(requestLoggingFilter, BasicAuthenticationFilter.class);
 
         return http.build();
     }
@@ -87,7 +98,8 @@ public class SecurityConfig {
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                );
+                )
+                .addFilterAfter(requestLoggingFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }
