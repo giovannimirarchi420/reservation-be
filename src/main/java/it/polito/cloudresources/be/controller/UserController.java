@@ -165,7 +165,6 @@ public class UserController {
      * @return The updated profile or error response
      */
     @PutMapping("/me")
-    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Update profile", description = "Updates the current user's profile")
     public ResponseEntity<Object> updateProfile(
             @Valid @RequestBody UpdateProfileDTO updateProfileDTO,
