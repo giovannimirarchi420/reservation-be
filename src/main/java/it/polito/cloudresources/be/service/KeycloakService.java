@@ -304,6 +304,7 @@ public class KeycloakService {
             return true;
         } catch (Exception e) {
             log.error("Error updating user in Keycloak", e);
+            log.error(e.getMessage());
             return false;
         }
     }
