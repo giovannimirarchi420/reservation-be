@@ -97,9 +97,7 @@ public class JwtUtils {
         Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
         if (realmAccess != null && realmAccess.containsKey("roles")) {
             List<String> roles = (List<String>) realmAccess.get("roles");
-            return roles.stream()
-                    .map(role -> "ROLE_" + role.toUpperCase())
-                    .collect(Collectors.toList());
+            return roles;
         }
 
         return Collections.emptyList();

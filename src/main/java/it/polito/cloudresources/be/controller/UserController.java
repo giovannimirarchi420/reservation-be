@@ -233,7 +233,6 @@ public class UserController {
      * @return The SSH key or null
      */
     @GetMapping("/me/ssh-key")
-    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get SSH key", description = "Retrieves the current user's SSH public key")
     public ResponseEntity<Object> getSshKey(Authentication authentication) {
         String keycloakId = utils.getCurrentUserKeycloakId(authentication);
@@ -251,7 +250,6 @@ public class UserController {
      * @return Success response or error
      */
     @DeleteMapping("/me/ssh-key")
-    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Delete SSH key", description = "Deletes the current user's SSH public key")
     public ResponseEntity<Object> deleteSshKey(Authentication authentication) {
         try {
@@ -275,8 +273,7 @@ public class UserController {
      * @param authentication User authentication object
      * @return Success response or error
      */
-    @PutMapping("/me/ssh-key")
-    @PreAuthorize("isAuthenticated()")
+    @PutMapping("/me/ssh-key") 
     @Operation(summary = "Update SSH key", description = "Updates the current user's SSH public key")
     public ResponseEntity<Object> updateSshKey(
             @Valid @RequestBody SshKeyDTO sshKeyDTO,
