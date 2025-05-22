@@ -4,9 +4,12 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.lang.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -16,6 +19,8 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -25,8 +30,14 @@ import java.util.stream.Collectors;
 @Slf4j
 public class RequestLoggingFilter extends OncePerRequestFilter {
 
+    private final JwtDecoder jwtDecoder;
+    
+    public RequestLoggingFilter(JwtDecoder jwtDecoder) {
+        this.jwtDecoder = jwtDecoder;
+    }
+
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
             throws ServletException, IOException {
         // Wrap request and response to cache their content
         ContentCachingRequestWrapper requestWrapper = new ContentCachingRequestWrapper(request);
@@ -41,8 +52,8 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
             long duration = System.currentTimeMillis() - startTime;
             
             // Extract user information from security context
-            String username = extractUsername();
-            Collection<String> roles = extractRoles();
+            String username = extractUsername(requestWrapper);
+            Collection<String> roles = extractRoles(requestWrapper);
             
             // Log the request
             logRequest(requestWrapper, username, roles, duration, responseWrapper.getStatus());
@@ -77,34 +88,76 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
     }
     
     /**
-     * Extract username from security context
+     * Extract username from security context or JWT token in request
      */
-    private String extractUsername() {
+    private String extractUsername(HttpServletRequest request) {
+        // First try to get from SecurityContextHolder
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) {
-            return "anonymous";
+        if (auth != null) {
+            if (auth instanceof JwtAuthenticationToken) {
+                JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) auth;
+                return jwtAuth.getToken().getClaimAsString("preferred_username");
+            }
+            
+            return auth.getName();
         }
         
-        if (auth instanceof JwtAuthenticationToken) {
-            JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) auth;
-            return jwtAuth.getToken().getClaimAsString("preferred_username");
+        // If auth is null, try to extract from Authorization header
+        try {
+            String token = extractToken(request);
+            if (token != null && jwtDecoder != null) {
+                Jwt jwt = jwtDecoder.decode(token);
+                return jwt.getClaimAsString("preferred_username");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to extract username from JWT token", e);
         }
         
-        return auth.getName();
+        return "anonymous";
     }
     
     /**
-     * Extract roles from security context
+     * Extract roles from security context or JWT token in request
      */
-    private Collection<String> extractRoles() {
+    private Collection<String> extractRoles(HttpServletRequest request) {
+        // First try to get from SecurityContextHolder
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) {
-            return Collections.emptyList();
+        if (auth != null) {
+            return auth.getAuthorities().stream()
+                    .map(authority -> authority.getAuthority())
+                    .collect(Collectors.toList());
         }
         
-        return auth.getAuthorities().stream()
-                .map(authority -> authority.getAuthority())
-                .collect(Collectors.toList());
+        // If auth is null, try to extract from Authorization header
+        try {
+            String token = extractToken(request);
+            if (token != null && jwtDecoder != null) {
+                Jwt jwt = jwtDecoder.decode(token);
+                Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+                if (realmAccess != null && realmAccess.containsKey("roles")) {
+                    @SuppressWarnings("unchecked")
+                    List<String> roles = (List<String>) realmAccess.get("roles");
+                    return roles.stream()
+                            .map(role -> "ROLE_" + role.toUpperCase())
+                            .collect(Collectors.toList());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to extract roles from JWT token", e);
+        }
+        
+        return Collections.emptyList();
+    }
+    
+    /**
+     * Extract JWT token from Authorization header
+     */
+    private String extractToken(HttpServletRequest request) {
+        String bearerToken = request.getHeader("Authorization");
+        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            return bearerToken.substring(7);
+        }
+        return null;
     }
     
     /**
@@ -177,7 +230,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
      * Skip logging for specific paths like actuator endpoints
      */
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) throws ServletException {
         String path = request.getRequestURI();
         return path.contains("/actuator/") || 
                path.contains("/h2-console/") ||
