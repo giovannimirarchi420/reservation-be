@@ -149,6 +149,7 @@ public class SecurityConfig {
     public Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter() {
         JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
         jwtConverter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter());
+        jwtConverter.setPrincipalClaimName("preferred_username"); // Explicitly set preferred_username as the principal claim
         return jwtConverter;
     }
 
