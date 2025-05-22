@@ -99,7 +99,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                 )
-                .addFilterAfter(requestLoggingFilter, BearerTokenAuthenticationFilter.class);
+                .addFilterBefore(requestLoggingFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }
@@ -161,8 +161,6 @@ public class SecurityConfig {
     public Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter() {
         JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
         jwtConverter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter());
-        // Configure the converter to use 'preferred_username' claim for the principal's name
-        jwtConverter.setPrincipalClaimName("preferred_username");
         return jwtConverter;
     }
 
