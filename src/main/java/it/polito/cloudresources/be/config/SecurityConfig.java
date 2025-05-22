@@ -161,6 +161,8 @@ public class SecurityConfig {
     public Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter() {
         JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
         jwtConverter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter());
+        // Configure the converter to use 'preferred_username' claim for the principal's name
+        jwtConverter.setPrincipalClaimName("preferred_username");
         return jwtConverter;
     }
 
@@ -180,7 +182,6 @@ public class SecurityConfig {
                 // Get realm roles from JWT claims
                 Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
                 if (realmAccess == null || !realmAccess.containsKey("roles")) {
-                    System.out.println("No realm roles found in JWT claims, returning default authorities " +  defaultAuthorities.toString());
                     return defaultAuthorities;
                 }
 
