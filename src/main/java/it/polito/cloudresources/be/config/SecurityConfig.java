@@ -180,32 +180,15 @@ public class SecurityConfig {
                 // Get realm roles from JWT claims
                 Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
                 if (realmAccess == null || !realmAccess.containsKey("roles")) {
+                    System.out.println("No realm roles found in JWT claims, returning default authorities " +  defaultAuthorities.toString());
                     return defaultAuthorities;
                 }
 
                 @SuppressWarnings("unchecked")
                 List<String> realmRoles = (List<String>) realmAccess.get("roles");
 
-                // Get resource roles from JWT claims
-                Map<String, Object> resourceAccess = jwt.getClaimAsMap("resource_access");
-                List<String> resourceRoles = List.of();
-
-                if (resourceAccess != null) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> clientAccess = (Map<String, Object>) resourceAccess.get("account");
-
-                    if (clientAccess != null && clientAccess.containsKey("roles")) {
-                        @SuppressWarnings("unchecked")
-                        List<String> clientRoles = (List<String>) clientAccess.get("roles");
-                        resourceRoles = clientRoles;
-                    }
-                }
-
                 // Combine all roles and add ROLE_ prefix required by Spring Security
-                List<SimpleGrantedAuthority> authorities = Stream.concat(
-                                realmRoles.stream().map(role -> "ROLE_" + role.toUpperCase()),
-                                resourceRoles.stream().map(role -> "ROLE_" + role.toUpperCase())
-                        )
+                List<SimpleGrantedAuthority> authorities = realmRoles.stream().map(role -> "ROLE_" + role.toUpperCase())
                         .distinct()
                         .map(SimpleGrantedAuthority::new)
                         .collect(Collectors.toList());
