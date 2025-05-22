@@ -138,27 +138,9 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         
         // If auth is null, try to use AuthenticationUtils to get current JWT  
         JwtAuthenticationToken jwtAuth = authUtils.getJwtAuthenticationToken();
-        if (jwtAuth != null) {
-            return jwtAuth.getAuthorities().stream()
-                    .map(authority -> authority.getAuthority())
-                    .collect(Collectors.toList());
+        if (jwtAuth != null && jwtAuth.getToken() instanceof Jwt jwt) {
+            return jwtUtils.extractRoles(jwt);
         }
-        
-        // Final fallback: extract directly from request
-        try {
-            String token = jwtUtils.extractToken(request);
-            Jwt jwt = jwtUtils.decode(token);
-            if (jwt != null) {
-                List<String> roles = jwtUtils.extractRoles(jwt);
-                // Format roles with ROLE_ prefix for Spring Security
-                return roles.stream()
-                        .map(role -> "ROLE_" + role.toUpperCase())
-                        .collect(Collectors.toList());
-            }
-        } catch (Exception e) {
-            log.debug("Failed to extract roles from JWT token", e);
-        }
-        
         return Collections.emptyList();
     }
     
