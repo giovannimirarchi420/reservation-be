@@ -15,7 +15,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 
 import java.time.ZonedDateTime;
@@ -77,7 +76,7 @@ public class AuditLogService {
             String entityId,
             AuditLog.LogSeverity severity) {
 
-        JwtAuthenticationToken jwtAuth = getJwtAuthenticationToken();
+        String username = authenticationUtils.getCurrentUsername();
         ZonedDateTime timestamp = dateTimeService.getCurrentDateTime();
 
         AuditLog.AuditLogBuilder builder = AuditLog.builder()
@@ -86,7 +85,7 @@ public class AuditLogService {
                 .entityType(entityType)
                 .action(action)
                 .details(details)
-                .username(jwtAuth.getToken().getClaimAsString("preferred_username"))
+                .username(username)
                 .siteName("") //TODO: Get site name of the context
                 .entityId(entityId)
                 .severity(severity);
@@ -106,7 +105,7 @@ public class AuditLogService {
             AuditLog.LogSeverity severity,
             String siteName) {
 
-        JwtAuthenticationToken jwtAuth = getJwtAuthenticationToken();
+        String username = authenticationUtils.getCurrentUsername();
         ZonedDateTime timestamp = dateTimeService.getCurrentDateTime();
 
         AuditLog.AuditLogBuilder builder = AuditLog.builder()
@@ -115,7 +114,7 @@ public class AuditLogService {
                 .entityType(entityType)
                 .action(action)
                 .details(details)
-                .username(jwtAuth.getToken().getClaimAsString("preferred_username"))
+                .username(username)
                 .siteName(siteName)
                 .entityId(entityId)
                 .severity(severity);
@@ -312,13 +311,6 @@ public class AuditLogService {
         return response;
     }
 
-    /**
-     * Get JWT Authentication token directly from the request
-     */
-    private JwtAuthenticationToken getJwtAuthenticationToken() {
-        return authenticationUtils.getJwtAuthenticationToken();
-    }
-    
     /**
      * Parse log action from string
      */

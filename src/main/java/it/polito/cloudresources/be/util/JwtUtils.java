@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Utility class for JWT token operations
@@ -95,9 +96,12 @@ public class JwtUtils {
         
         Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
         if (realmAccess != null && realmAccess.containsKey("roles")) {
-            return (List<String>) realmAccess.get("roles");
+            List<String> roles = (List<String>) realmAccess.get("roles");
+            return roles.stream()
+                    .map(role -> "ROLE_" + role.toUpperCase())
+                    .collect(Collectors.toList());
         }
-        
+
         return Collections.emptyList();
     }
     
