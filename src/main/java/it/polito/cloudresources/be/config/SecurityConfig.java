@@ -149,7 +149,6 @@ public class SecurityConfig {
     public Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter() {
         JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
         jwtConverter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter());
-        jwtConverter.setPrincipalClaimName("preferred_username"); // Explicitly set preferred_username as the principal claim
         return jwtConverter;
     }
 
@@ -181,7 +180,7 @@ public class SecurityConfig {
 
                 if (resourceAccess != null) {
                     @SuppressWarnings("unchecked")
-                    Map<String, Object> clientAccess = (Map<String, Object>) resourceAccess.get("resource-management-fe"); //TODO set this as configuration
+                    Map<String, Object> clientAccess = (Map<String, Object>) resourceAccess.get("resource-management-app");
 
                     if (clientAccess != null && clientAccess.containsKey("roles")) {
                         @SuppressWarnings("unchecked")
