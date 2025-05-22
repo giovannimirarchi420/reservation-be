@@ -6,6 +6,7 @@ import it.polito.cloudresources.be.dto.logs.EnhancedAuditLogResponseDTO;
 import it.polito.cloudresources.be.mapper.AuditLogMapper;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.repository.AuditLogRepository;
+import it.polito.cloudresources.be.util.AuthenticationUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,8 +15,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 
@@ -38,6 +37,7 @@ public class AuditLogService {
     private final DateTimeConfig.DateTimeService dateTimeService;
     private final KeycloakService keycloakService;
     private final AuditLogMapper auditLogMapper;
+    private final AuthenticationUtils authenticationUtils;
 
     @Async
     public void logCrudAction(AuditLog.LogType type, AuditLog.LogAction action, AuditLog.LogEntity entity, String details) {
@@ -313,14 +313,10 @@ public class AuditLogService {
     }
 
     /**
-     * Get JWT Authentication token from security context
+     * Get JWT Authentication token directly from the request
      */
     private JwtAuthenticationToken getJwtAuthenticationToken() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth instanceof JwtAuthenticationToken) {
-            return (JwtAuthenticationToken) auth;
-        }
-        return null;
+        return authenticationUtils.getJwtAuthenticationToken();
     }
     
     /**

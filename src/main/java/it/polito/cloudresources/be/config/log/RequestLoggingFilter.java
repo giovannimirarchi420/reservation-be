@@ -1,5 +1,7 @@
 package it.polito.cloudresources.be.config.log;
 
+import it.polito.cloudresources.be.util.AuthenticationUtils;
+import it.polito.cloudresources.be.util.JwtUtils;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -20,7 +21,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -30,10 +30,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class RequestLoggingFilter extends OncePerRequestFilter {
 
-    private final JwtDecoder jwtDecoder;
+    private final JwtUtils jwtUtils;
+    private final AuthenticationUtils authUtils;
     
-    public RequestLoggingFilter(JwtDecoder jwtDecoder) {
-        this.jwtDecoder = jwtDecoder;
+    public RequestLoggingFilter(JwtUtils jwtUtils, AuthenticationUtils authUtils) {
+        this.jwtUtils = jwtUtils;
+        this.authUtils = authUtils;
     }
 
     @Override
@@ -51,7 +53,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         } finally {
             long duration = System.currentTimeMillis() - startTime;
             
-            // Extract user information from security context
+            // Extract user information from security context or JWT
             String username = extractUsername(requestWrapper);
             Collection<String> roles = extractRoles(requestWrapper);
             
@@ -102,12 +104,18 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
             return auth.getName();
         }
         
-        // If auth is null, try to extract from Authorization header
+        // If auth is null, use AuthenticationUtils to try to get username from request
+        String username = authUtils.getCurrentUsername();
+        if (username != null) {
+            return username;
+        }
+        
+        // Final fallback: extract directly from request
         try {
-            String token = extractToken(request);
-            if (token != null && jwtDecoder != null) {
-                Jwt jwt = jwtDecoder.decode(token);
-                return jwt.getClaimAsString("preferred_username");
+            String token = jwtUtils.extractToken(request);
+            Jwt jwt = jwtUtils.decode(token);
+            if (jwt != null) {
+                return jwtUtils.extractUsername(jwt);
             }
         } catch (Exception e) {
             log.debug("Failed to extract username from JWT token", e);
@@ -128,19 +136,24 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
                     .collect(Collectors.toList());
         }
         
-        // If auth is null, try to extract from Authorization header
+        // If auth is null, try to use AuthenticationUtils to get current JWT  
+        JwtAuthenticationToken jwtAuth = authUtils.getJwtAuthenticationToken();
+        if (jwtAuth != null) {
+            return jwtAuth.getAuthorities().stream()
+                    .map(authority -> authority.getAuthority())
+                    .collect(Collectors.toList());
+        }
+        
+        // Final fallback: extract directly from request
         try {
-            String token = extractToken(request);
-            if (token != null && jwtDecoder != null) {
-                Jwt jwt = jwtDecoder.decode(token);
-                Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-                if (realmAccess != null && realmAccess.containsKey("roles")) {
-                    @SuppressWarnings("unchecked")
-                    List<String> roles = (List<String>) realmAccess.get("roles");
-                    return roles.stream()
-                            .map(role -> "ROLE_" + role.toUpperCase())
-                            .collect(Collectors.toList());
-                }
+            String token = jwtUtils.extractToken(request);
+            Jwt jwt = jwtUtils.decode(token);
+            if (jwt != null) {
+                List<String> roles = jwtUtils.extractRoles(jwt);
+                // Format roles with ROLE_ prefix for Spring Security
+                return roles.stream()
+                        .map(role -> "ROLE_" + role.toUpperCase())
+                        .collect(Collectors.toList());
             }
         } catch (Exception e) {
             log.debug("Failed to extract roles from JWT token", e);
@@ -149,16 +162,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         return Collections.emptyList();
     }
     
-    /**
-     * Extract JWT token from Authorization header
-     */
-    private String extractToken(HttpServletRequest request) {
-        String bearerToken = request.getHeader("Authorization");
-        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
-        }
-        return null;
-    }
+
     
     /**
      * Log request details
@@ -172,11 +176,6 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         // Create log entry
         log.info("REQUEST: {} {}{} | USER: {} | ROLES: {} | STATUS: {} | DURATION: {}ms",
                 method, uri, queryString, username, roles, status, duration);
-        
-        // Log query parameters for GET requests
-        if ("GET".equals(method) && request.getQueryString() != null) {
-            log.info("QUERY PARAMS: {}", request.getQueryString());
-        }
         
         // Always log request body for POST, PUT, PATCH methods
         if (("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method)) 
