@@ -32,6 +32,7 @@ public class UserService {
     private final EventService eventService;
     private final UserMapper userMapper;
     private final SshKeyValidator sshKeyValidator;
+    private final SshKeyService sshKeyService;
 
     /**
      * Get all users
@@ -79,7 +80,7 @@ public class UserService {
         }
 
         UserDTO userDto = userMapper.toDto(userRepresentation.get());
-        userDto.setSshPublicKey(keycloakService.getUserSshKey(id).orElse(null));
+        userDto.setSshPublicKey(sshKeyService.getUserSshKey(id).orElse(null));
         return userDto;
     }
 
@@ -196,7 +197,8 @@ public class UserService {
         }
 
         if (updateUserDTO.getSshPublicKey() != null) {
-            attributes.put(KeycloakService.ATTR_SSH_KEY, updateUserDTO.getSshPublicKey());
+            // Save SSH key in the database instead of Keycloak
+            sshKeyService.saveUserSshKey(id, updateUserDTO.getSshPublicKey(), requesterUserId);
         }
 
         if (updateUserDTO.getRoles() != null) {
@@ -246,7 +248,8 @@ public class UserService {
         if (profileDTO.getSshPublicKey() != null) {
             String sshPublicKey = sshKeyValidator.formatSshKey(profileDTO.getSshPublicKey());
             sshKeyValidator.isValidSshPublicKey(sshPublicKey);
-            attributes.put(KeycloakService.ATTR_SSH_KEY, profileDTO.getSshPublicKey());
+            // Save SSH key in the database instead of Keycloak
+            sshKeyService.saveUserSshKey(id, sshPublicKey, id);
         }
 
         boolean updated = keycloakService.updateUser(id, attributes);
@@ -322,7 +325,7 @@ public class UserService {
      * @return Optional containing the SSH key if found
      */
     public Optional<String> getUserSshKey(String id) {
-        return keycloakService.getUserSshKey(id);
+        return sshKeyService.getUserSshKey(id);
     }
 
     /**
@@ -331,9 +334,6 @@ public class UserService {
      * @return true if deleted successfully, false otherwise
      */
     public boolean deleteUserSshKey(String id) {
-        Map<String, Object> attributes = new HashMap<>();
-        attributes.put(KeycloakService.ATTR_SSH_KEY, null); // Set to null to remove
-
-        return keycloakService.updateUser(id, attributes);
+        return sshKeyService.deleteUserSshKey(id);
     }
 }

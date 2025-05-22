@@ -267,4 +267,35 @@ public class UserController {
             return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete SSH key: " + e.getMessage());
         }
     }
+
+    /**
+     * Update current user's SSH key
+     *
+     * @param sshKeyDTO The SSH key DTO containing the new key
+     * @param authentication User authentication object
+     * @return Success response or error
+     */
+    @PutMapping("/me/ssh-key")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Update SSH key", description = "Updates the current user's SSH public key")
+    public ResponseEntity<Object> updateSshKey(
+            @Valid @RequestBody SshKeyDTO sshKeyDTO,
+            Authentication authentication) {
+        try {
+            String keycloakId = utils.getCurrentUserKeycloakId(authentication);
+            
+            // Create a profile DTO with just the SSH key field
+            UpdateProfileDTO updateProfileDTO = new UpdateProfileDTO();
+            updateProfileDTO.setSshPublicKey(sshKeyDTO.getSshPublicKey());
+            
+            userService.updateProfile(keycloakId, updateProfileDTO);
+            return utils.createSuccessResponse("SSH key updated successfully");
+        } catch (IllegalArgumentException e) {
+            return utils.createErrorResponse(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (EntityNotFoundException e) {
+            return utils.createErrorResponse(HttpStatus.NOT_FOUND, "User not found");
+        } catch (Exception e) {
+            return utils.createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update SSH key: " + e.getMessage());
+        }
+    }
 }

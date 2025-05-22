@@ -2,6 +2,7 @@ package it.polito.cloudresources.be.mapper;
 
 import it.polito.cloudresources.be.dto.users.UserDTO;
 import it.polito.cloudresources.be.service.KeycloakService;
+import it.polito.cloudresources.be.service.SshKeyService;
 import lombok.RequiredArgsConstructor;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import java.util.stream.Collectors;
 public class UserMapper {
     
     private final KeycloakService keycloakService;
+    private final SshKeyService sshKeyService;
     
     /**
      * Convert from UserRepresentation to UserDTO
@@ -39,12 +41,12 @@ public class UserMapper {
         dto.setRoles(new HashSet<>(roles));
 
         // Get avatar
-        /* keycloakService.getUserAvatar(userRepresentation.getId())
+        keycloakService.getUserAvatar(userRepresentation.getId())
             .ifPresent(dto::setAvatar);
 
-        // Get SSH key
-        keycloakService.getUserSshKey(userRepresentation.getId())
-            .ifPresent(dto::setSshPublicKey); */
+        // Get SSH key from database
+        sshKeyService.getUserSshKey(userRepresentation.getId())
+            .ifPresent(dto::setSshPublicKey);
         
         return dto;
     }
