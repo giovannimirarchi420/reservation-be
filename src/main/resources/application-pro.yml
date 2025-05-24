@@ -47,7 +47,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info # Expose health and info endpoints
+        include: health, info, loggers
   endpoint:
     health:
       probes:
