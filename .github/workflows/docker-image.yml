@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: Build, Push and Deploy
 
 on:
   workflow_dispatch: # Allows manual triggering of the workflow
@@ -76,14 +76,27 @@ jobs:
           # Get current tag value
           CURRENT_TAG=$(yq eval ".be.image.tag" values.yaml)
           echo "Current Backend tag: ${CURRENT_TAG}"
-          echo "New Backend tag: ${{ env.version }}"
+          
+          # Extract database type suffix if it exists (e.g., -postgres, -oracle)
+          if [[ "$CURRENT_TAG" =~ -([a-zA-Z]+)$ ]]; then
+            DB_SUFFIX="-${BASH_REMATCH[1]}"
+            echo "Detected database suffix: ${DB_SUFFIX}"
+          else
+            # If no suffix is found, assume postgres as default
+            DB_SUFFIX="-postgres"
+            echo "No database suffix detected, using default: ${DB_SUFFIX}"
+          fi
+          
+          # Create new tag with version and preserved database type
+          NEW_TAG="${{ env.version }}${DB_SUFFIX}"
+          echo "New Backend tag: ${NEW_TAG}"
           
           # Update the tag in values.yaml
-          yq eval ".be.image.tag = \"${{ env.version }}\"" -i values.yaml
+          yq eval ".be.image.tag = \"${NEW_TAG}\"" -i values.yaml
           
           # Verify the update
-          NEW_TAG=$(yq eval ".be.image.tag" values.yaml)
-          echo "Updated Backend tag: ${NEW_TAG}"
+          UPDATED_TAG=$(yq eval ".be.image.tag" values.yaml)
+          echo "Updated Backend tag: ${UPDATED_TAG}"
 
       - name: Commit and push Helm chart changes
         run: |
@@ -101,7 +114,7 @@ jobs:
           
           # Add and commit changes
           git add values.yaml
-          git commit -m "chore: update Backend image tag to ${{ env.version }}"
+          git commit -m "chore: update Backend image tag to ${NEW_TAG}"
           
           # Push changes
           git push
