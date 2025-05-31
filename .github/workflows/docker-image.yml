@@ -91,6 +91,9 @@ jobs:
           NEW_TAG="${{ env.version }}${DB_SUFFIX}"
           echo "New Backend tag: ${NEW_TAG}"
           
+          # Set as environment variable for use in next step
+          echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+          
           # Update the tag in values.yaml
           yq eval ".be.image.tag = \"${NEW_TAG}\"" -i values.yaml
           
@@ -114,7 +117,7 @@ jobs:
           
           # Add and commit changes
           git add values.yaml
-          git commit -m "chore: update Backend image tag to ${NEW_TAG}"
+          git commit -m "chore: update Backend image tag to ${{ env.NEW_TAG }}"
           
           # Push changes
           git push
