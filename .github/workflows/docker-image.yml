@@ -23,6 +23,7 @@ jobs:
           VERSION=$(xmllint --xpath "//*[local-name()='project']/*[local-name()='version']/text()" pom.xml)
           echo "VERSION=$VERSION"
           echo "version=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       # Step 4: Log in to DockerHub
       - name: Log in to DockerHub
@@ -54,3 +55,53 @@ jobs:
       # Step 7 (Optional): Log out of DockerHub
       - name: Log out of DockerHub
         run: docker logout
+
+      # Step 8: Update Helm Chart
+      - name: Checkout Helm chart repository
+        uses: actions/checkout@v4
+        with:
+          repository: giovannimirarchi420/reservation-helm-chart
+          token: ${{ secrets.CHART_REPO_TOKEN }}
+          path: helm-chart-repo
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Update backend image tag in values.yaml
+        run: |
+          cd helm-chart-repo
+          
+          # Get current tag value
+          CURRENT_TAG=$(yq eval ".be.image.tag" values.yaml)
+          echo "Current Backend tag: ${CURRENT_TAG}"
+          echo "New Backend tag: ${{ env.version }}"
+          
+          # Update the tag in values.yaml
+          yq eval ".be.image.tag = \"${{ env.version }}\"" -i values.yaml
+          
+          # Verify the update
+          NEW_TAG=$(yq eval ".be.image.tag" values.yaml)
+          echo "Updated Backend tag: ${NEW_TAG}"
+
+      - name: Commit and push Helm chart changes
+        run: |
+          cd helm-chart-repo
+          
+          # Check if there are changes
+          if git diff --quiet; then
+            echo "No changes detected in values.yaml"
+            exit 0
+          fi
+          
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Add and commit changes
+          git add values.yaml
+          git commit -m "chore: update Backend image tag to ${{ env.version }}"
+          
+          # Push changes
+          git push
