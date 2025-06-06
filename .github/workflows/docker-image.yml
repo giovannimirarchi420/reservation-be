@@ -38,7 +38,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/resource-management-backend:${{ env.version }}-postgres
+          tags: ${{ secrets.DOCKER_USERNAME }}/prognose-backend:${{ env.version }}-postgres
           build-args: |
             DB_TYPE=postgres
 
