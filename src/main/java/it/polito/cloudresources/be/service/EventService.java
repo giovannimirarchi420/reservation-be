@@ -432,17 +432,6 @@ public class EventService {
                 "User: " + userId + " deleted event: " + event,
                 siteName);
 
-        
-        // Check if the event was already started but not finished yet
-        // This action is to ensure that the event-processor will not notify the end of the event and trigger 
-        // the deprovisioning of the resource again.
-
-        ZonedDateTime now = ZonedDateTime.now();
-        if (event.getStart().isBefore(now) && event.getEnd().isAfter(now) && event.getEndNotifiedAt() == null) {
-            event.setEndNotifiedAt(now);
-            eventRepository.save(event);
-        }
-
         webhookService.processResourceEvent(WebhookEventType.EVENT_DELETED, event.getResource(), event);
         
         return true;
