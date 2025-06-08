@@ -14,8 +14,8 @@ import java.time.ZonedDateTime;
 import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
 
 /**
- * Event entity representing resource bookings
- * Now using Keycloak ID instead of User entity
+ * Event entity. Copied from reservation-be.
+ * Added 'startNotifiedAt' and 'endNotifiedAt' fields to track processing status for start/end events.
  */
 @Entity
 @Table(name = "events")
@@ -43,36 +43,45 @@ public class Event extends AuditableEntity {
     @Column(name = "end_time")
     private ZonedDateTime end;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY) // Lazy fetch resource
     @JoinColumn(name = "resource_id", nullable = false)
     private Resource resource;
 
     @NotBlank
     @Column(name = "keycloak_id")
-    private String keycloakId; // Keycloak user ID instead of User entity reference
-    
-    // User name accessor methods for backward compatibility
-    @Transient
-    private String userName; // Not stored in DB, populated from Keycloak
-    
-    public String getUserName() {
-        return userName;
-    }
-    
-    public void setUserName(String userName) {
-        this.userName = userName;
-    }
-    
+    private String keycloakId; // Keycloak user ID
+
+    // Field to mark when the start notification was sent
+    @Column(name = "start_notified_at")
+    private ZonedDateTime startNotifiedAt;
+
+    // Field to mark when the end notification was sent
+    @Column(name = "end_notified_at")
+    private ZonedDateTime endNotifiedAt;
+
     /**
-     * Pre-persist hook to ensure start and end dates have correct timezone
+     * Pre-persist hook to ensure start and end dates have correct timezone.
      */
     @PrePersist
     @Override
     public void prePersist() {
         // Call the parent class method first
         super.prePersist();
-        
-        // Ensure start and end dates have the application's default time zone
+        ensureCorrectTimezone();
+    }
+
+    /**
+     * Pre-update hook to ensure start and end dates have correct timezone.
+     */
+    @PreUpdate
+    @Override
+    public void preUpdate() {
+        // Call the parent class method first
+        super.preUpdate();
+        ensureCorrectTimezone();
+    }
+
+    private void ensureCorrectTimezone() {
         if (start != null) {
             start = start.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
         }
@@ -80,22 +89,19 @@ public class Event extends AuditableEntity {
             end = end.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
         }
     }
-    
-    /**
-     * Pre-update hook to ensure start and end dates have correct timezone
-     */
-    @PreUpdate
+
+    // Avoid issues with Lombok and circular dependencies
     @Override
-    public void preUpdate() {
-        // Call the parent class method first
-        super.preUpdate();
-        
-        // Ensure start and end dates have the application's default time zone
-        if (start != null) {
-            start = start.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
-        }
-        if (end != null) {
-            end = end.withZoneSameInstant(DateTimeConfig.DEFAULT_ZONE_ID);
-        }
+    public String toString() {
+        return "Event{" +
+               "id=" + id +
+               ", title='" + title + '\'' +
+               ", start=" + start +
+               ", end=" + end +
+               ", resourceId=" + (resource != null ? resource.getId() : null) +
+               ", keycloakId='" + keycloakId + '\'' +
+               ", startNotifiedAt=" + startNotifiedAt +
+               ", endNotifiedAt=" + endNotifiedAt +
+               '}';
     }
 }
