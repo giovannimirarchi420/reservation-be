@@ -43,7 +43,7 @@ public class Event extends AuditableEntity {
     @Column(name = "end_time")
     private ZonedDateTime end;
 
-    @ManyToOne(fetch = FetchType.LAZY) // Lazy fetch resource
+    @ManyToOne
     @JoinColumn(name = "resource_id", nullable = false)
     private Resource resource;
 
