@@ -428,15 +428,18 @@ public class EventService {
         // Create a deep clone of the event for the webhook service to avoid accessing deleted entity
         Event eventClone = createEventClone(event);
 
+        // Delete the entity first to avoid transaction conflicts
+        eventRepository.deleteById(id);
+
+        // Log the audit action after successful deletion
         auditLogService.logCrudAction(AuditLog.LogType.USER,
                 AuditLog.LogAction.DELETE,
                 new AuditLog.LogEntity("EVENT", eventClone.getId().toString()),
                 "User: " + userId + " deleted event: " + eventClone.toString(),
                 siteName);
 
+        // Process webhook asynchronously after deletion is committed
         webhookService.processResourceEvent(WebhookEventType.EVENT_DELETED, eventClone.getResource(), eventClone);
-        
-        eventRepository.deleteById(id);
 
         return true;
     }
