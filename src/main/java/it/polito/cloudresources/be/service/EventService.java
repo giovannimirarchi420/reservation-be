@@ -422,17 +422,21 @@ public class EventService {
             throw new AccessDeniedException("You don't have permission to delete this event");
         }
 
+        // Store necessary data before deletion to avoid accessing deleted entity
         String siteName = keycloakService.getSiteNameById(event.getResource().getSiteId(), "Unknown site");
+        Resource eventResource = event.getResource(); // Store resource reference
+        String eventIdString = event.getId().toString();
+        String eventString = event.toString(); // Store string representation
         
         eventRepository.deleteById(id);
 
         auditLogService.logCrudAction(AuditLog.LogType.USER,
                 AuditLog.LogAction.DELETE,
-                new AuditLog.LogEntity("EVENT", event.getId().toString()),
-                "User: " + userId + " deleted event: " + event,
+                new AuditLog.LogEntity("EVENT", eventIdString),
+                "User: " + userId + " deleted event: " + eventString,
                 siteName);
 
-        webhookService.processResourceEvent(WebhookEventType.EVENT_DELETED, event.getResource(), event);
+        webhookService.processResourceEvent(WebhookEventType.EVENT_DELETED, eventResource, event);
         
         return true;
     }
