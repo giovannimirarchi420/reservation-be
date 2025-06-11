@@ -424,20 +424,20 @@ public class EventService {
 
         // Store necessary data before deletion to avoid accessing deleted entity
         String siteName = keycloakService.getSiteNameById(event.getResource().getSiteId(), "Unknown site");
-        Resource eventResource = event.getResource(); // Store resource reference
-        String eventIdString = event.getId().toString();
-        String eventString = event.toString(); // Store string representation
         
-        eventRepository.deleteById(id);
+        // Create a deep clone of the event for the webhook service to avoid accessing deleted entity
+        Event eventClone = createEventClone(event);
 
         auditLogService.logCrudAction(AuditLog.LogType.USER,
                 AuditLog.LogAction.DELETE,
-                new AuditLog.LogEntity("EVENT", eventIdString),
-                "User: " + userId + " deleted event: " + eventString,
+                new AuditLog.LogEntity("EVENT", eventClone.getId().toString()),
+                "User: " + userId + " deleted event: " + eventClone.toString(),
                 siteName);
 
-        webhookService.processResourceEvent(WebhookEventType.EVENT_DELETED, eventResource, event);
+        webhookService.processResourceEvent(WebhookEventType.EVENT_DELETED, eventClone.getResource(), eventClone);
         
+        eventRepository.deleteById(id);
+
         return true;
     }
 
@@ -537,6 +537,34 @@ public class EventService {
         // Check if user is in the event resource's site
         String siteId = event.getResource().getSiteId();
         return keycloakService.isUserInGroup(userId, siteId);
+    }
+
+    /**
+     * Create a deep clone of an event object to avoid issues with accessing deleted entities
+     * This is particularly useful for webhook processing after event deletion
+     */
+    private Event createEventClone(Event original) {
+        Event clone = new Event();
+        
+        // Copy all primitive fields
+        clone.setId(original.getId());
+        clone.setTitle(original.getTitle());
+        clone.setDescription(original.getDescription());
+        clone.setStart(original.getStart());
+        clone.setEnd(original.getEnd());
+        clone.setKeycloakId(original.getKeycloakId());
+        clone.setStartNotifiedAt(original.getStartNotifiedAt());
+        clone.setEndNotifiedAt(original.getEndNotifiedAt());
+        
+        // Copy audit fields from parent class
+        clone.setCreatedAt(original.getCreatedAt());
+        clone.setUpdatedAt(original.getUpdatedAt());
+        
+        // Create a shallow copy of the resource (we don't need a deep clone of resource)
+        // The resource should remain valid as it's not being deleted
+        clone.setResource(original.getResource());
+        
+        return clone;
     }
 
 }
