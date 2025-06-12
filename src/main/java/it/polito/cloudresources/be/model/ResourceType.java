@@ -39,4 +39,14 @@ public class ResourceType extends AuditableEntity {
     @NotBlank
     private String siteId; // Keycloak Group ID representing the site
 
+    // Custom toString to avoid lazy loading issues
+    @Override
+    public String toString() {
+        return "ResourceType{" +
+               "id=" + id +
+               ", name='" + name + '\'' +
+               ", color='" + color + '\'' +
+               ", siteId='" + siteId + '\'' +
+               '}';
+    }
 }

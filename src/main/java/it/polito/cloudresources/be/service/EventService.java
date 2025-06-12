@@ -6,6 +6,7 @@ import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Event;
 import it.polito.cloudresources.be.model.Resource;
 import it.polito.cloudresources.be.model.ResourceStatus;
+import it.polito.cloudresources.be.model.ResourceType;
 import it.polito.cloudresources.be.model.WebhookEventType;
 import it.polito.cloudresources.be.repository.EventRepository;
 import it.polito.cloudresources.be.repository.ResourceRepository;
@@ -550,6 +551,7 @@ public class EventService {
         Event clone = new Event();
         
         // Copy all primitive fields
+        clone.setId(original.getId()); // Include the ID for logging purposes
         clone.setTitle(original.getTitle());
         clone.setDescription(original.getDescription());
         clone.setStart(original.getStart());
@@ -562,9 +564,34 @@ public class EventService {
         clone.setCreatedAt(original.getCreatedAt());
         clone.setUpdatedAt(original.getUpdatedAt());
         
-        // Create a shallow copy of the resource (we don't need a deep clone of resource)
-        // The resource should remain valid as it's not being deleted
-        clone.setResource(original.getResource());
+        // Create a safe copy of the resource that avoids lazy loading issues
+        if (original.getResource() != null) {
+            Resource originalResource = original.getResource();
+            Resource resourceClone = new Resource();
+            
+            // Copy basic resource fields without lazy collections
+            resourceClone.setId(originalResource.getId());
+            resourceClone.setName(originalResource.getName());
+            resourceClone.setSpecs(originalResource.getSpecs());
+            resourceClone.setLocation(originalResource.getLocation());
+            resourceClone.setStatus(originalResource.getStatus());
+            resourceClone.setSiteId(originalResource.getSiteId());
+            
+            // Create a safe copy of the resource type without lazy collections
+            if (originalResource.getType() != null) {
+                ResourceType originalType = originalResource.getType();
+                ResourceType typeClone = new ResourceType();
+                typeClone.setId(originalType.getId());
+                typeClone.setName(originalType.getName());
+                typeClone.setColor(originalType.getColor());
+                typeClone.setSiteId(originalType.getSiteId());
+                // Don't copy the resources collection to avoid lazy loading issues
+                resourceClone.setType(typeClone);
+            }
+            
+            // Don't copy collections (subResources, events) to avoid lazy loading issues
+            clone.setResource(resourceClone);
+        }
         
         return clone;
     }

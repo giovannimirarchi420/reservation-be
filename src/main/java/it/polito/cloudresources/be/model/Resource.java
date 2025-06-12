@@ -67,4 +67,19 @@ public class Resource extends AuditableEntity {
         subResources.remove(subResource);
         subResource.setParent(null);
     }
+
+    // Custom toString to avoid lazy loading issues
+    @Override
+    public String toString() {
+        return "Resource{" +
+               "id=" + id +
+               ", name='" + name + '\'' +
+               ", specs='" + specs + '\'' +
+               ", location='" + location + '\'' +
+               ", status=" + status +
+               ", siteId='" + siteId + '\'' +
+               ", typeId=" + (type != null ? type.getId() : null) +
+               ", parentId=" + (parent != null ? parent.getId() : null) +
+               '}';
+    }
 }
