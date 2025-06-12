@@ -434,7 +434,7 @@ public class EventService {
         // Log the audit action after successful deletion
         auditLogService.logCrudAction(AuditLog.LogType.USER,
                 AuditLog.LogAction.DELETE,
-                new AuditLog.LogEntity("EVENT", eventClone.getId().toString()),
+                new AuditLog.LogEntity("EVENT", id.toString()),
                 "User: " + userId + " deleted event: " + eventClone.toString(),
                 siteName);
 
@@ -550,7 +550,6 @@ public class EventService {
         Event clone = new Event();
         
         // Copy all primitive fields
-        clone.setId(original.getId());
         clone.setTitle(original.getTitle());
         clone.setDescription(original.getDescription());
         clone.setStart(original.getStart());
