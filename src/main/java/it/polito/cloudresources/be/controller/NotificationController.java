@@ -6,7 +6,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import it.polito.cloudresources.be.dto.NotificationDTO;
 import it.polito.cloudresources.be.service.NotificationService;
 import it.polito.cloudresources.be.util.ControllerUtils;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +26,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(name = "Notifications", description = "API for managing user notifications")
 @SecurityRequirement(name = "bearer-auth")
+@Slf4j
 public class NotificationController {
 
     private final NotificationService notificationService;
@@ -143,5 +146,31 @@ public class NotificationController {
         
         NotificationDTO notification = notificationService.createNotification(userId, message, type);
         return ResponseEntity.ok(notification);
+    }
+
+    /**
+     * Webhook endpoint for sending notifications with signature validation
+     */
+    @PostMapping("/webhook")
+    @Operation(summary = "Webhook notification", description = "Sends a notification via webhook with signature validation")
+    public ResponseEntity<Object> webhookNotification(
+            @RequestBody String rawPayload,
+            HttpServletRequest httpRequest) {
+        
+        // Get signature from header
+        String signature = httpRequest.getHeader("X-Webhook-Signature");
+        if (signature == null || signature.isEmpty()) {
+            log.warn("Missing X-Webhook-Signature header in webhook request");
+            return utils.createErrorResponse(HttpStatus.UNAUTHORIZED, "Missing signature header");
+        }
+        
+        // Process webhook notification using service
+        NotificationService.ProcessWebhookResult result = notificationService.processWebhookNotification(rawPayload, signature);
+        
+        if (result.isSuccess()) {
+            return ResponseEntity.ok(result.getNotification());
+        } else {
+            return utils.createErrorResponse(result.getStatus(), result.getErrorMessage());
+        }
     }
 }

@@ -1,6 +1,8 @@
 package it.polito.cloudresources.be.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import it.polito.cloudresources.be.dto.NotificationDTO;
+import it.polito.cloudresources.be.dto.WebhookNotificationRequestDTO;
 import it.polito.cloudresources.be.mapper.NotificationMapper;
 import it.polito.cloudresources.be.model.AuditLog;
 import it.polito.cloudresources.be.model.Notification;
@@ -10,6 +12,7 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +33,7 @@ public class NotificationService {
     private final KeycloakService keycloakService;
     private final NotificationMapper notificationMapper;
     private final AuditLogService auditLogService;
+    private final WebhookService webhookService;
 
     /**
      * Get all notifications for a user by Keycloak ID
@@ -195,5 +199,105 @@ public class NotificationService {
             notificationRepository.save(notification);
         }
 
+    }
+
+    /**
+     * Process webhook notification request with validation
+     * 
+     * @param rawPayload The raw payload as received from the webhook
+     * @param signature The webhook signature from headers
+     * @return ProcessWebhookResult containing the notification or error information
+     */
+    @Transactional
+    public ProcessWebhookResult processWebhookNotification(String rawPayload, String signature) {
+        try {
+            // Parse the request body manually
+            WebhookNotificationRequestDTO request;
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                request = objectMapper.readValue(rawPayload, WebhookNotificationRequestDTO.class);
+            } catch (Exception e) {
+                log.warn("Invalid JSON payload in webhook request", e);
+                return ProcessWebhookResult.error(HttpStatus.BAD_REQUEST, "Invalid JSON payload");
+            }
+            
+            // Validate required fields manually since we can't use @Valid
+            if (request.getWebhookId() == null || request.getWebhookId().isBlank()) {
+                return ProcessWebhookResult.error(HttpStatus.BAD_REQUEST, "Webhook ID is required");
+            }
+            if (request.getUserId() == null || request.getUserId().isBlank()) {
+                return ProcessWebhookResult.error(HttpStatus.BAD_REQUEST, "User ID is required");
+            }
+            if (request.getMessage() == null || request.getMessage().isBlank()) {
+                return ProcessWebhookResult.error(HttpStatus.BAD_REQUEST, "Message is required");
+            }
+            if (request.getType() == null || request.getType().isBlank()) {
+                request.setType("INFO"); // Default value
+            }
+            
+            // Validate signature using the raw payload
+            if (!webhookService.validateWebhookSignature(request.getWebhookId(), signature, rawPayload)) {
+                log.warn("Invalid webhook signature for webhook ID: {}", request.getWebhookId());
+                return ProcessWebhookResult.error(HttpStatus.UNAUTHORIZED, "Invalid signature");
+            }
+            
+            // Create notification
+            NotificationDTO notification = createNotification(
+                    request.getUserId(), 
+                    request.getMessage(), 
+                    request.getType()
+            );
+            
+            log.info("Webhook notification created successfully for user {} from webhook {}", 
+                    request.getUserId(), request.getWebhookId());
+            
+            return ProcessWebhookResult.success(notification);
+            
+        } catch (Exception e) {
+            log.error("Error processing webhook notification: {}", e.getMessage(), e);
+            return ProcessWebhookResult.error(HttpStatus.INTERNAL_SERVER_ERROR, 
+                    "An error occurred while processing the webhook notification");
+        }
+    }
+
+    /**
+     * Result class for webhook processing
+     */
+    public static class ProcessWebhookResult {
+        private final boolean success;
+        private final NotificationDTO notification;
+        private final HttpStatus status;
+        private final String errorMessage;
+
+        private ProcessWebhookResult(boolean success, NotificationDTO notification, HttpStatus status, String errorMessage) {
+            this.success = success;
+            this.notification = notification;
+            this.status = status;
+            this.errorMessage = errorMessage;
+        }
+
+        public static ProcessWebhookResult success(NotificationDTO notification) {
+            return new ProcessWebhookResult(true, notification, HttpStatus.OK, null);
+        }
+
+        public static ProcessWebhookResult error(HttpStatus status, String errorMessage) {
+            return new ProcessWebhookResult(false, null, status, errorMessage);
+        }
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public NotificationDTO getNotification() {
+            return notification;
+        }
+
+        public HttpStatus getStatus() {
+            return status;
+        }
+
+        public String getErrorMessage() {
+            return errorMessage;
+        }
     }
 }

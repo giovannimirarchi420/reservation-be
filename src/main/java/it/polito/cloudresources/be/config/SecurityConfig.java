@@ -88,6 +88,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers( "/actuator/**").permitAll() // Allow actuator endpoints with or without /api prefix
                         .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/notifications/webhook").permitAll() // Allow webhook notifications authenticated with webhook signature
                         .requestMatchers("/users/me", "/users/me/**").authenticated()
                         .requestMatchers("/resources/**").authenticated()
                         .requestMatchers("/resource-types/**").authenticated()

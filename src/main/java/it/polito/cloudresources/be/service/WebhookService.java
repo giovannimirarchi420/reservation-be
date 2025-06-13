@@ -597,7 +597,7 @@ public class WebhookService {
     /**
      * Generate HMAC signature for payload
      */
-    private String generateHmacSignature(String payload, String secretKey) {
+    public String generateHmacSignature(String payload, String secretKey) {
         try {
             Mac sha256Hmac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(), "HmacSHA256");
@@ -607,6 +607,63 @@ public class WebhookService {
         } catch (Exception e) {
             log.error("Error generating HMAC signature: {}", e.getMessage(), e);
             return "";
+        }
+    }
+    
+    /**
+     * Validate webhook signature
+     * 
+     * @param webhookId The webhook ID from the request
+     * @param signature The signature from X-Webhook-Signature header
+     * @param payload The request payload
+     * @return true if signature is valid
+     */
+    public boolean validateWebhookSignature(String webhookId, String signature, String payload) {
+        if (webhookId == null || signature == null || payload == null) {
+            log.warn("Invalid signature validation request: webhookId={}, signature={}, payload length={}", 
+                    webhookId, signature != null ? "present" : "null", payload != null ? payload.length() : 0);
+            return false;
+        }
+        
+        try {
+            Long id = Long.parseLong(webhookId);
+            Optional<WebhookConfig> webhookOpt = webhookConfigRepository.findById(id);
+            
+            if (webhookOpt.isEmpty()) {
+                log.warn("Webhook not found with ID: {}", webhookId);
+                return false;
+            }
+            
+            WebhookConfig webhook = webhookOpt.get();
+            if (!webhook.isEnabled()) {
+                log.warn("Webhook {} is disabled", webhookId);
+                return false;
+            }
+            
+            String secret = webhook.getSecret();
+            if (secret == null || secret.isEmpty()) {
+                log.warn("No secret configured for webhook {}", webhookId);
+                return false;
+            }
+            
+            // Use existing signature generation logic
+            String expectedSignature = generateHmacSignature(payload, secret);
+            boolean isValid = expectedSignature.equals(signature);
+            
+            if (!isValid) {
+                log.warn("Invalid signature for webhook {}", webhookId);
+            } else {
+                log.debug("Valid signature for webhook {}", webhookId);
+            }
+            
+            return isValid;
+            
+        } catch (NumberFormatException e) {
+            log.warn("Invalid webhook ID format: {}", webhookId);
+            return false;
+        } catch (Exception e) {
+            log.error("Error validating webhook signature: {}", e.getMessage(), e);
+            return false;
         }
     }
     
