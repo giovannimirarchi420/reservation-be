@@ -12,8 +12,10 @@ import it.polito.cloudresources.be.repository.WebhookLogRepository;
 import it.polito.cloudresources.be.service.WebhookService;
 import it.polito.cloudresources.be.util.ControllerUtils;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -33,6 +35,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(name = "Webhooks", description = "API for managing webhooks")
 @SecurityRequirement(name = "bearer-auth")
+@Slf4j
 
 public class WebhookController {
 
@@ -242,4 +245,30 @@ public ResponseEntity<Object> getAllWebhookLogs(
                 "An error occurred while retrieving webhook logs: " + e.getMessage());
     }
 }
+
+/**
+     * Webhook endpoint for creating webhook logs with signature validation
+     */
+    @PostMapping("/log")
+    @Operation(summary = "Webhook log creation", description = "Creates a webhook log via webhook with signature validation")
+    public ResponseEntity<Object> webhookLogCreation(
+            @RequestBody String rawPayload,
+            HttpServletRequest httpRequest) {
+        
+        // Get signature from header
+        String signature = httpRequest.getHeader("X-Webhook-Signature");
+        if (signature == null || signature.isEmpty()) {
+            log.warn("Missing X-Webhook-Signature header in webhook log request");
+            return utils.createErrorResponse(HttpStatus.UNAUTHORIZED, "Missing signature header");
+        }
+        
+        // Process webhook log creation using service
+        WebhookService.ProcessWebhookLogResult result = webhookService.processWebhookLogCreation(rawPayload, signature);
+        
+        if (result.isSuccess()) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(result.getWebhookLog());
+        } else {
+            return utils.createErrorResponse(result.getStatus(), result.getErrorMessage());
+        }
+    }
 }

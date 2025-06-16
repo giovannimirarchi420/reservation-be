@@ -3,6 +3,7 @@ package it.polito.cloudresources.be.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.polito.cloudresources.be.config.datetime.DateTimeConfig;
+import it.polito.cloudresources.be.dto.WebhookLogRequestDTO;
 import it.polito.cloudresources.be.dto.webhooks.WebhookConfigDTO;
 import it.polito.cloudresources.be.dto.webhooks.WebhookConfigResponseDTO;
 import it.polito.cloudresources.be.dto.webhooks.WebhookPayload;
@@ -729,5 +730,136 @@ public class WebhookService {
                 new AuditLog.LogEntity("SYSTEM", null),
                 details
         );
+    }
+    
+    /**
+     * Process webhook log creation request with validation
+     * 
+     * @param rawPayload The raw payload as received from the webhook
+     * @param signature The webhook signature from headers
+     * @return ProcessWebhookLogResult containing the log or error information
+     */
+    @Transactional
+    public ProcessWebhookLogResult processWebhookLogCreation(String rawPayload, String signature) {
+        try {
+            // Parse the request body manually
+            WebhookLogRequestDTO request;
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                request = objectMapper.readValue(rawPayload, WebhookLogRequestDTO.class);
+            } catch (Exception e) {
+                log.warn("Invalid JSON payload in webhook log request", e);
+                return ProcessWebhookLogResult.error(HttpStatus.BAD_REQUEST, "Invalid JSON payload");
+            }
+            
+            // Validate required fields manually since we can't use @Valid
+            if (request.getWebhookId() == null || request.getWebhookId().isBlank()) {
+                return ProcessWebhookLogResult.error(HttpStatus.BAD_REQUEST, "Webhook ID is required");
+            }
+            if (request.getEventType() == null) {
+                return ProcessWebhookLogResult.error(HttpStatus.BAD_REQUEST, "Event type is required");
+            }
+            if (request.getPayload() == null || request.getPayload().isBlank()) {
+                return ProcessWebhookLogResult.error(HttpStatus.BAD_REQUEST, "Payload is required");
+            }
+            if (request.getSuccess() == null) {
+                return ProcessWebhookLogResult.error(HttpStatus.BAD_REQUEST, "Success status is required");
+            }
+            
+            // Validate signature using the raw payload
+            if (!validateWebhookSignature(request.getWebhookId(), signature, rawPayload)) {
+                log.warn("Invalid webhook signature for webhook ID: {}", request.getWebhookId());
+                return ProcessWebhookLogResult.error(HttpStatus.UNAUTHORIZED, "Invalid signature");
+            }
+            
+            // Get the webhook configuration
+            Long webhookId;
+            try {
+                webhookId = Long.parseLong(request.getWebhookId());
+            } catch (NumberFormatException e) {
+                return ProcessWebhookLogResult.error(HttpStatus.BAD_REQUEST, "Invalid webhook ID format");
+            }
+            
+            Optional<WebhookConfig> webhookOpt = webhookConfigRepository.findById(webhookId);
+            if (webhookOpt.isEmpty()) {
+                return ProcessWebhookLogResult.error(HttpStatus.NOT_FOUND, "Webhook not found");
+            }
+            
+            WebhookConfig webhook = webhookOpt.get();
+            
+            // Get resource if specified
+            Resource resource = null;
+            if (request.getResourceId() != null) {
+                Optional<Resource> resourceOpt = resourceRepository.findById(request.getResourceId());
+                if (resourceOpt.isEmpty()) {
+                    return ProcessWebhookLogResult.error(HttpStatus.NOT_FOUND, "Resource not found");
+                }
+                resource = resourceOpt.get();
+            }
+            
+            // Create webhook log
+            WebhookLog webhookLog = new WebhookLog();
+            webhookLog.setWebhook(webhook);
+            webhookLog.setEventType(request.getEventType());
+            webhookLog.setPayload(request.getPayload());
+            webhookLog.setStatusCode(request.getStatusCode());
+            webhookLog.setResponse(request.getResponse());
+            webhookLog.setSuccess(request.getSuccess());
+            webhookLog.setRetryCount(request.getRetryCount() != null ? request.getRetryCount() : 0);
+            webhookLog.setResource(resource);
+            
+            WebhookLog savedLog = webhookLogRepository.save(webhookLog);
+            
+            log.info("Webhook log created successfully for webhook {} with status {}", 
+                    request.getWebhookId(), request.getSuccess() ? "success" : "failure");
+            
+            return ProcessWebhookLogResult.success(savedLog);
+            
+        } catch (Exception e) {
+            log.error("Error processing webhook log creation: {}", e.getMessage(), e);
+            return ProcessWebhookLogResult.error(HttpStatus.INTERNAL_SERVER_ERROR, 
+                    "An error occurred while processing the webhook log creation");
+        }
+    }
+
+    /**
+     * Result class for webhook log processing
+     */
+    public static class ProcessWebhookLogResult {
+        private final boolean success;
+        private final WebhookLog webhookLog;
+        private final HttpStatus status;
+        private final String errorMessage;
+
+        private ProcessWebhookLogResult(boolean success, WebhookLog webhookLog, HttpStatus status, String errorMessage) {
+            this.success = success;
+            this.webhookLog = webhookLog;
+            this.status = status;
+            this.errorMessage = errorMessage;
+        }
+
+        public static ProcessWebhookLogResult success(WebhookLog webhookLog) {
+            return new ProcessWebhookLogResult(true, webhookLog, HttpStatus.CREATED, null);
+        }
+
+        public static ProcessWebhookLogResult error(HttpStatus status, String errorMessage) {
+            return new ProcessWebhookLogResult(false, null, status, errorMessage);
+        }
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public WebhookLog getWebhookLog() {
+            return webhookLog;
+        }
+
+        public HttpStatus getStatus() {
+            return status;
+        }
+
+        public String getErrorMessage() {
+            return errorMessage;
+        }
     }
 }
