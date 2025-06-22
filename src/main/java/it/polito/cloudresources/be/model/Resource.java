@@ -1,5 +1,6 @@
 package it.polito.cloudresources.be.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -30,6 +31,7 @@ public class Resource extends AuditableEntity {
     private Resource parent;
 
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
+    @JsonIgnore
     private Set<Resource> subResources = new HashSet<>();
 
     @NotBlank
@@ -52,6 +54,7 @@ public class Resource extends AuditableEntity {
     private ResourceType type;
 
     @OneToMany(mappedBy = "resource", cascade = CascadeType.ALL)
+    @JsonIgnore
     private Set<Event> events = new HashSet<>();
 
     @NotBlank

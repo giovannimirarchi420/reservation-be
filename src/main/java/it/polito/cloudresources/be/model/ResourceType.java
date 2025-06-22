@@ -1,5 +1,6 @@
 package it.polito.cloudresources.be.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -33,6 +34,7 @@ public class ResourceType extends AuditableEntity {
     private String color;
 
     @OneToMany(mappedBy = "type", cascade = CascadeType.ALL)
+    @JsonIgnore
     private Set<Resource> resources = new HashSet<>();
 
     @Column(name = "site_id")

@@ -428,7 +428,7 @@ public class WebhookService {
                 data
         );
         
-        String payloadJson = objectMapper.writeValueAsString(payload);
+        String payloadJson = safeSerializePayload(payload);
         
         // Set up headers with signature
         HttpHeaders headers = createHeaders(webhook, payloadJson);
@@ -508,7 +508,7 @@ public class WebhookService {
                     data
             );
             
-            String payloadJson = objectMapper.writeValueAsString(payload);
+            String payloadJson = safeSerializePayload(payload);
             
             // Create log with retry information
             WebhookLog webhookLog = new WebhookLog();
@@ -860,6 +860,32 @@ public class WebhookService {
 
         public String getErrorMessage() {
             return errorMessage;
+        }
+    }
+    
+    /**
+     * Safely serialize webhook payload to JSON, handling potential Hibernate session issues
+     * 
+     * @param payload The webhook payload to serialize
+     * @return JSON string representation of the payload
+     * @throws JsonProcessingException If serialization fails
+     */
+    private String safeSerializePayload(WebhookPayload payload) throws JsonProcessingException {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            // If serialization fails due to lazy loading issues, log the error and create a simplified payload
+            log.warn("Failed to serialize webhook payload due to lazy loading issues: {}", e.getMessage());
+            
+            // Create a simplified payload without potentially problematic data
+            WebhookPayload simplifiedPayload = new WebhookPayload(
+                    payload.getEventType(),
+                    payload.getTimestamp(),
+                    payload.getWebhookId(),
+                    "Payload serialization failed due to detached entity. Event type: " + payload.getEventType()
+            );
+            
+            return objectMapper.writeValueAsString(simplifiedPayload);
         }
     }
 }
