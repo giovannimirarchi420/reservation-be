@@ -66,6 +66,9 @@ public class EventMapper implements EntityMapper<EventDTO, Event> {
             event.setKeycloakId(dto.getUserId());
         }
         
+        // Set custom parameters
+        event.setCustomParameters(dto.getCustomParameters());
+        
         return event;
     }
     
@@ -92,6 +95,9 @@ public class EventMapper implements EntityMapper<EventDTO, Event> {
         
         // Set user information from Keycloak
         dto.setUserId(entity.getKeycloakId());
+        
+        // Set custom parameters
+        dto.setCustomParameters(entity.getCustomParameters());
         
         // Try to get username from Keycloak
         try {

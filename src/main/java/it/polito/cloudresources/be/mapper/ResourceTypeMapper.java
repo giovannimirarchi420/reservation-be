@@ -31,6 +31,7 @@ public class ResourceTypeMapper implements EntityMapper<ResourceTypeDTO, Resourc
         resourceType.setName(dto.getName());
         resourceType.setColor(dto.getColor());
         resourceType.setSiteId(dto.getSiteId());
+        resourceType.setCustomParameters(dto.getCustomParameters());
         
         return resourceType;
     }
@@ -46,6 +47,7 @@ public class ResourceTypeMapper implements EntityMapper<ResourceTypeDTO, Resourc
         dto.setName(entity.getName());
         dto.setColor(entity.getColor());
         dto.setSiteId(entity.getSiteId());
+        dto.setCustomParameters(entity.getCustomParameters());
         
         // Set site name from Keycloak
         if (entity.getSiteId() != null) {

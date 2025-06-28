@@ -41,6 +41,9 @@ public class EventDTO {
 
     private String userId;
 
+    @Size(max = 1000, message = "Custom parameters cannot exceed 1000 characters")
+    private String customParameters; // JSON string storing custom parameter values
+
     // Additional fields for the frontend
     private String userName;
     private String resourceName;

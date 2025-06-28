@@ -51,6 +51,9 @@ public class Event extends AuditableEntity {
     @Column(name = "keycloak_id")
     private String keycloakId; // Keycloak user ID
 
+    @Column(name = "custom_parameters", columnDefinition = "TEXT")
+    private String customParameters; // JSON string storing custom parameter values
+
     // Field to mark when the start notification was sent
     @Column(name = "start_notified_at")
     private ZonedDateTime startNotifiedAt;

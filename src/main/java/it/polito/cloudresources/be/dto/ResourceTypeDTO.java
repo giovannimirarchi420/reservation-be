@@ -25,4 +25,5 @@ public class ResourceTypeDTO {
 
     private String siteId;
     private String siteName; // For UI display
+    private String customParameters; // JSON string storing custom parameter definitions
 }
