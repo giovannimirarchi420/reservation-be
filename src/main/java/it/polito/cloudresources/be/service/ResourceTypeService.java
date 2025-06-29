@@ -125,6 +125,7 @@ public class ResourceTypeService {
 
         resourceType.setName(resourceTypeDTO.getName());
         resourceType.setColor(resourceTypeDTO.getColor());
+        resourceType.setCustomParameters(resourceTypeDTO.getCustomParameters());
 
         ResourceType updatedType = resourceTypeRepository.save(resourceType);
 
