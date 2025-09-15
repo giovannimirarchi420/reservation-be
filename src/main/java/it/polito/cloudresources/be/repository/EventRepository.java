@@ -37,8 +37,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     List<Event> findByResourceId(Long resourceId);
     /**
      * Find events within a date range
+     * Only checks if the event start date is within the range to include long-running events
      */
-    @Query("SELECT e FROM Event e WHERE e.start >= :startDate AND e.end <= :endDate")
+    @Query("SELECT e FROM Event e WHERE e.start >= :startDate AND e.start <= :endDate")
     List<Event> findByDateRange(
             @Param("startDate") ZonedDateTime startDate,
             @Param("endDate") ZonedDateTime endDate);
