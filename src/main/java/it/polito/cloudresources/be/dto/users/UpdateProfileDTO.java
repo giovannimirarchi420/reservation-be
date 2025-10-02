@@ -26,6 +26,8 @@ public class UpdateProfileDTO {
 
     private String avatar;
 
+    private String password;
+
     private String sshPublicKey;
 
     /**

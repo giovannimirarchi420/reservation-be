@@ -252,6 +252,10 @@ public class UserService {
             sshKeyService.saveUserSshKey(id, sshPublicKey, id);
         }
 
+        if (profileDTO.getPassword() != null && !profileDTO.getPassword().isEmpty()) {
+            attributes.put("password", profileDTO.getPassword());
+        }
+
         boolean updated = keycloakService.updateUser(id, attributes);
         if (!updated) {
             throw new RuntimeException("Failed to update user in Keycloak");
