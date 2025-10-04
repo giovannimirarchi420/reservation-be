@@ -264,7 +264,7 @@ public class UserService {
         auditLogService.logCrudAction(AuditLog.LogType.USER,
                 AuditLog.LogAction.UPDATE,
                 new AuditLog.LogEntity("USER", id),
-                profileDTO.toString());
+                "User profile updated"); //Do not include sensitive information
 
         // Retrieve and return the updated user
         return keycloakService.getUserById(id)
