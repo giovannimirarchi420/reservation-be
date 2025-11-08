@@ -267,19 +267,31 @@ public class KeycloakService {
                 @SuppressWarnings("unchecked")
                 List<String> newRoleNames = (List<String>) attributes.get("roles");
                 
+                // Normalize site_admin role names to ensure consistency
+                List<String> normalizedNewRoleNames = newRoleNames.stream()
+                    .map(roleName -> {
+                        if (roleName.endsWith("_site_admin")) {
+                            // Extract site name and normalize it
+                            String siteName = roleName.substring(0, roleName.length() - "_site_admin".length());
+                            return getSiteAdminRoleName(siteName);
+                        }
+                        return roleName;
+                    })
+                    .collect(Collectors.toList());
+                
                 List<RoleRepresentation> currentRoles = userResource.roles().realmLevel().listAll();
                 List<String> currentRoleNames = currentRoles.stream()
                     .map(RoleRepresentation::getName)
                     .collect(Collectors.toList());
                 
                 // Find roles to add (in new list but not in current)
-                List<String> rolesToAdd = newRoleNames.stream()
+                List<String> rolesToAdd = normalizedNewRoleNames.stream()
                     .filter(roleName -> !currentRoleNames.contains(roleName))
                     .collect(Collectors.toList());
                 
                 // Find roles to remove (in current but not in new list)
                 List<String> rolesToRemove = currentRoleNames.stream()
-                    .filter(roleName -> !newRoleNames.contains(roleName))
+                    .filter(roleName -> !normalizedNewRoleNames.contains(roleName))
                     .collect(Collectors.toList());
                 
                 // Add new roles

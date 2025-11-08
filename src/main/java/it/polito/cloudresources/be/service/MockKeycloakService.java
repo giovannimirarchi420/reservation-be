@@ -199,7 +199,20 @@ public class MockKeycloakService extends KeycloakService {
         if (attributes.containsKey("roles")) {
             @SuppressWarnings("unchecked")
             List<String> roles = (List<String>) attributes.get("roles");
-            userRoles.put(userId, roles != null ? new ArrayList<>(roles) : new ArrayList<>());
+            
+            // Normalize site_admin role names to ensure consistency
+            List<String> normalizedRoles = roles.stream()
+                .map(roleName -> {
+                    if (roleName.endsWith("_site_admin")) {
+                        // Extract site name and normalize it
+                        String siteName = roleName.substring(0, roleName.length() - "_site_admin".length());
+                        return getSiteAdminRoleName(siteName);
+                    }
+                    return roleName;
+                })
+                .collect(Collectors.toList());
+            
+            userRoles.put(userId, normalizedRoles != null ? new ArrayList<>(normalizedRoles) : new ArrayList<>());
         }
 
         log.info("Updated mock user: {}", user.getUsername());
