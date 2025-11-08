@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.Set;
 
@@ -29,6 +30,7 @@ public class UpdateUserDTO {
     @Email(message = "Invalid email format")
     private String email;
 
+    @ToString.Exclude
     private String password;
 
     private String avatar;

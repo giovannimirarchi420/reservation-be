@@ -267,20 +267,44 @@ public class KeycloakService {
                 @SuppressWarnings("unchecked")
                 List<String> newRoleNames = (List<String>) attributes.get("roles");
                 
+                // Normalize site_admin role names to ensure consistency
+                List<String> normalizedNewRoleNames = newRoleNames.stream()
+                    .map(roleName -> {
+                        if (roleName.endsWith("_site_admin")) {
+                            // Extract site name and normalize it
+                            String siteName = roleName.substring(0, roleName.length() - "_site_admin".length());
+                            return getSiteAdminRoleName(siteName);
+                        }
+                        return roleName;
+                    })
+                    .collect(Collectors.toList());
+                
                 List<RoleRepresentation> currentRoles = userResource.roles().realmLevel().listAll();
                 List<String> currentRoleNames = currentRoles.stream()
                     .map(RoleRepresentation::getName)
                     .collect(Collectors.toList());
                 
-                List<String> rolesToAdd = newRoleNames.stream()
+                // Find roles to add (in new list but not in current)
+                List<String> rolesToAdd = normalizedNewRoleNames.stream()
                     .filter(roleName -> !currentRoleNames.contains(roleName))
                     .collect(Collectors.toList());
                 
+                // Find roles to remove (in current but not in new list)
+                List<String> rolesToRemove = currentRoleNames.stream()
+                    .filter(roleName -> !normalizedNewRoleNames.contains(roleName))
+                    .collect(Collectors.toList());
+                
+                // Add new roles
                 for (String roleName : rolesToAdd) {
                     assignRoleToUser(userId, roleName);
                 }
                 
-                log.info("Updated roles for user {}: added {}", userId, rolesToAdd);
+                // Remove old roles
+                for (String roleName : rolesToRemove) {
+                    removeRoleFromUser(userId, roleName);
+                }
+                
+                log.info("Updated roles for user {}: added {}, removed {}", userId, rolesToAdd, rolesToRemove);
             }
 
             user.setAttributes(userAttributes);
@@ -876,6 +900,31 @@ public class KeycloakService {
             return false;
         } catch (Exception e) {
             log.error("Error assigning role {} to user {}", roleName, userId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Remove a role from a user
+     */
+    private boolean removeRoleFromUser(String userId, String roleName) {
+        try {
+            UserResource userResource = getRealmResource().users().get(userId);
+            RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
+            
+            if (role == null) {
+                log.warn("Role {} not found or its representation is null. Cannot remove from user {}.", roleName, userId);
+                return false;
+            }
+            
+            userResource.roles().realmLevel().remove(Collections.singletonList(role));
+            log.info("Removed role {} from user {}", roleName, userId);
+            return true;
+        } catch (NotFoundException e) {
+            log.warn("Role {} not found. Cannot remove from user {}. Assuming already removed.", roleName, userId);
+            return true; // Role doesn't exist, so effectively removed
+        } catch (Exception e) {
+            log.error("Error removing role {} from user {}", roleName, userId, e);
             return false;
         }
     }
