@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 /**
  * DTO for users to update their own profile information
@@ -26,6 +27,7 @@ public class UpdateProfileDTO {
 
     private String avatar;
 
+    @ToString.Exclude
     private String password;
 
     private String sshPublicKey;

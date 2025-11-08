@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.Set;
 
@@ -36,6 +37,7 @@ public class CreateUserDTO {
     private String email;
 
     @NotBlank(message = "Password is required")
+    @ToString.Exclude
     private String password;
 
     private String avatar;
