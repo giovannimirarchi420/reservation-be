@@ -272,15 +272,27 @@ public class KeycloakService {
                     .map(RoleRepresentation::getName)
                     .collect(Collectors.toList());
                 
+                // Find roles to add (in new list but not in current)
                 List<String> rolesToAdd = newRoleNames.stream()
                     .filter(roleName -> !currentRoleNames.contains(roleName))
                     .collect(Collectors.toList());
                 
+                // Find roles to remove (in current but not in new list)
+                List<String> rolesToRemove = currentRoleNames.stream()
+                    .filter(roleName -> !newRoleNames.contains(roleName))
+                    .collect(Collectors.toList());
+                
+                // Add new roles
                 for (String roleName : rolesToAdd) {
                     assignRoleToUser(userId, roleName);
                 }
                 
-                log.info("Updated roles for user {}: added {}", userId, rolesToAdd);
+                // Remove old roles
+                for (String roleName : rolesToRemove) {
+                    removeRoleFromUser(userId, roleName);
+                }
+                
+                log.info("Updated roles for user {}: added {}, removed {}", userId, rolesToAdd, rolesToRemove);
             }
 
             user.setAttributes(userAttributes);
@@ -876,6 +888,31 @@ public class KeycloakService {
             return false;
         } catch (Exception e) {
             log.error("Error assigning role {} to user {}", roleName, userId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Remove a role from a user
+     */
+    private boolean removeRoleFromUser(String userId, String roleName) {
+        try {
+            UserResource userResource = getRealmResource().users().get(userId);
+            RoleRepresentation role = getRealmResource().roles().get(roleName).toRepresentation();
+            
+            if (role == null) {
+                log.warn("Role {} not found or its representation is null. Cannot remove from user {}.", roleName, userId);
+                return false;
+            }
+            
+            userResource.roles().realmLevel().remove(Collections.singletonList(role));
+            log.info("Removed role {} from user {}", roleName, userId);
+            return true;
+        } catch (NotFoundException e) {
+            log.warn("Role {} not found. Cannot remove from user {}. Assuming already removed.", roleName, userId);
+            return true; // Role doesn't exist, so effectively removed
+        } catch (Exception e) {
+            log.error("Error removing role {} from user {}", roleName, userId, e);
             return false;
         }
     }
